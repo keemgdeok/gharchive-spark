@@ -1,0 +1,166 @@
+services:
+  spark-master:
+    build:
+      context: ./docker/spark
+      args:
+        SPARK_VERSION: ${SPARK_VERSION}
+        HADOOP_VERSION: ${HADOOP_VERSION}
+        HADOOP_AWS_VERSION: ${HADOOP_AWS_VERSION}
+        AWS_SDK_VERSION: ${AWS_SDK_VERSION}
+    container_name: spark-master
+    hostname: ${SPARK_MASTER_HOST}
+    environment:
+      - SPARK_NO_DAEMONIZE=true
+      - AWS_ACCESS_KEY_ID=${MINIO_ROOT_USER}
+      - AWS_SECRET_ACCESS_KEY=${MINIO_ROOT_PASSWORD}
+      - AWS_REGION=${MINIO_REGION}
+    command: ["/bin/bash", "-c", "/opt/spark/sbin/start-master.sh --host ${SPARK_MASTER_HOST} --port ${SPARK_MASTER_PORT} --webui-port ${SPARK_MASTER_WEBUI}"]
+    ports:
+      - "${SPARK_MASTER_PORT}:${SPARK_MASTER_PORT}"
+      - "${SPARK_MASTER_WEBUI}:${SPARK_MASTER_WEBUI}"
+    volumes:
+      - spark-event-logs:/opt/spark/event-logs
+      - spark-warehouse:/opt/spark/warehouse
+      - ./docker/spark/conf:/opt/spark/conf
+    networks:
+      - gh-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:${SPARK_MASTER_WEBUI}"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  spark-worker-1:
+    build:
+      context: ./docker/spark
+      args:
+        SPARK_VERSION: ${SPARK_VERSION}
+        HADOOP_VERSION: ${HADOOP_VERSION}
+        HADOOP_AWS_VERSION: ${HADOOP_AWS_VERSION}
+        AWS_SDK_VERSION: ${AWS_SDK_VERSION}
+    depends_on:
+      spark-master:
+        condition: service_healthy
+    container_name: spark-worker-1
+    hostname: spark-worker-1
+    environment:
+      - SPARK_NO_DAEMONIZE=true
+      - AWS_ACCESS_KEY_ID=${MINIO_ROOT_USER}
+      - AWS_SECRET_ACCESS_KEY=${MINIO_ROOT_PASSWORD}
+      - AWS_REGION=${MINIO_REGION}
+      - SPARK_WORKER_CORES=${SPARK_WORKER_CORES}
+      - SPARK_WORKER_MEMORY=${SPARK_WORKER_MEMORY}
+      - SPARK_WORKER_WEBUI=8081
+    command: ["/bin/bash", "-c", "/opt/spark/sbin/start-worker.sh spark://${SPARK_MASTER_HOST}:${SPARK_MASTER_PORT} --webui-port ${SPARK_WORKER_WEBUI}"]
+    ports:
+      - "8081:8081"
+    volumes:
+      - spark-event-logs:/opt/spark/event-logs
+      - spark-warehouse:/opt/spark/warehouse
+      - ./docker/spark/conf:/opt/spark/conf
+    networks:
+      - gh-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8081"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  spark-worker-2:
+    build:
+      context: ./docker/spark
+      args:
+        SPARK_VERSION: ${SPARK_VERSION}
+        HADOOP_VERSION: ${HADOOP_VERSION}
+        HADOOP_AWS_VERSION: ${HADOOP_AWS_VERSION}
+        AWS_SDK_VERSION: ${AWS_SDK_VERSION}
+    depends_on:
+      spark-master:
+        condition: service_healthy
+    container_name: spark-worker-2
+    hostname: spark-worker-2
+    environment:
+      - SPARK_NO_DAEMONIZE=true
+      - AWS_ACCESS_KEY_ID=${MINIO_ROOT_USER}
+      - AWS_SECRET_ACCESS_KEY=${MINIO_ROOT_PASSWORD}
+      - AWS_REGION=${MINIO_REGION}
+      - SPARK_WORKER_CORES=${SPARK_WORKER_CORES}
+      - SPARK_WORKER_MEMORY=${SPARK_WORKER_MEMORY}
+      - SPARK_WORKER_WEBUI=8082
+    command: ["/bin/bash", "-c", "/opt/spark/sbin/start-worker.sh spark://${SPARK_MASTER_HOST}:${SPARK_MASTER_PORT} --webui-port ${SPARK_WORKER_WEBUI}"]
+    ports:
+      - "8082:8082"
+    volumes:
+      - spark-event-logs:/opt/spark/event-logs
+      - spark-warehouse:/opt/spark/warehouse
+      - ./docker/spark/conf:/opt/spark/conf
+    networks:
+      - gh-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8082"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  spark-history-server:
+    build:
+      context: ./docker/spark
+      args:
+        SPARK_VERSION: ${SPARK_VERSION}
+        HADOOP_VERSION: ${HADOOP_VERSION}
+        HADOOP_AWS_VERSION: ${HADOOP_AWS_VERSION}
+        AWS_SDK_VERSION: ${AWS_SDK_VERSION}
+    depends_on:
+      spark-master:
+        condition: service_started
+    container_name: spark-history-server
+    hostname: spark-history-server
+    environment:
+      - SPARK_NO_DAEMONIZE=true
+      - AWS_ACCESS_KEY_ID=${MINIO_ROOT_USER}
+      - AWS_SECRET_ACCESS_KEY=${MINIO_ROOT_PASSWORD}
+      - AWS_REGION=${MINIO_REGION}
+      - SPARK_HISTORY_OPTS=-Dspark.history.fs.logDirectory=file:///opt/spark/event-logs -Dspark.history.ui.port=${SPARK_HISTORY_PORT}
+    command: ["/bin/bash", "-c", "/opt/spark/sbin/start-history-server.sh"]
+    ports:
+      - "${SPARK_HISTORY_PORT}:${SPARK_HISTORY_PORT}"
+    volumes:
+      - spark-event-logs:/opt/spark/event-logs
+      - ./docker/spark/conf:/opt/spark/conf
+    networks:
+      - gh-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:${SPARK_HISTORY_PORT}"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  minio:
+    image: quay.io/minio/minio:RELEASE.2024-05-10T01-41-38Z
+    container_name: minio
+    hostname: minio
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+    command: server /data --console-address ":${MINIO_CONSOLE_PORT}"
+    ports:
+      - "${MINIO_PORT}:${MINIO_PORT}"
+      - "${MINIO_CONSOLE_PORT}:${MINIO_CONSOLE_PORT}"
+    volumes:
+      - minio-data:/data
+    networks:
+      - gh-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:${MINIO_PORT}/minio/health/live"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+networks:
+  gh-net:
+    driver: bridge
+
+volumes:
+  minio-data:
+  spark-event-logs:
+  spark-warehouse:
