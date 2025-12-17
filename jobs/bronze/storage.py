@@ -12,11 +12,11 @@ import boto3
 from botocore.client import Config as BotoConfig
 from botocore.exceptions import ClientError
 
-from jobs.common.s3 import resolve_s3_endpoint
+DEFAULT_DOCKER_S3_ENDPOINT = "http://minio:9000"
 
 
 def build_s3_client():
-    endpoint = resolve_s3_endpoint()
+    endpoint = os.getenv("S3_ENDPOINT", "").strip() or DEFAULT_DOCKER_S3_ENDPOINT
     region = os.getenv("MINIO_REGION", "us-east-1")
     access_key = os.getenv(
         "AWS_ACCESS_KEY_ID", os.getenv("MINIO_ROOT_USER", "minioadmin")
@@ -24,7 +24,7 @@ def build_s3_client():
     secret_key = os.getenv(
         "AWS_SECRET_ACCESS_KEY", os.getenv("MINIO_ROOT_PASSWORD", "minioadmin")
     )
-    # 한국어 주석: MinIO 호환 path-style + v4 서명
+    # MinIO 호환 path-style + v4 서명
     return boto3.client(
         "s3",
         endpoint_url=endpoint,
