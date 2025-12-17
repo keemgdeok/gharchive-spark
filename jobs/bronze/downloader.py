@@ -21,7 +21,7 @@ async def download_bytes_with_retry(
     timeout: aiohttp.ClientTimeout,
     chunk_size_bytes: int = DEFAULT_CHUNK_SIZE_BYTES,
 ) -> bytes:
-    # 한국어 주석: tenacity 같은 외부 의존 없이 최소 재시도(지수 백오프)만 구현
+    # tenacity 없이 최소 재시도(지수 백오프)만 구현
     delay_sec = 1.0
     last_error: Exception | None = None
 

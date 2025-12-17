@@ -28,7 +28,7 @@ UTC = dt.timezone.utc
 
 
 def configure_logging(verbose: bool) -> None:
-    # 한국어 주석: 로깅 레벨을 실행 시점에 조정
+    # 로깅 레벨을 실행 시점에 조정
     level = logging.DEBUG if verbose else logging.INFO
     logging.basicConfig(
         level=level,

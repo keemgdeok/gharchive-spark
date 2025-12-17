@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 한국어 주석: 실행 시 주입될 핵심 자원 설정
+# 실행 시 주입될 핵심 자원 설정
 export SPARK_MASTER_HOST=${SPARK_MASTER_HOST:-spark-master}
 export SPARK_MASTER_PORT=${SPARK_MASTER_PORT:-7077}
 export SPARK_MASTER_WEBUI_PORT=${SPARK_MASTER_WEBUI:-8080}
