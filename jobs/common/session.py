@@ -1,6 +1,8 @@
 import os
 from pyspark.sql import SparkSession
 
+from jobs.common.s3 import resolve_s3_endpoint
+
 
 # 한국어 주석: MinIO(S3A) 설정을 묶어 SparkSession을 생성
 # 재사용을 위해 모듈화
@@ -8,7 +10,7 @@ from pyspark.sql import SparkSession
 
 
 def get_spark(app_name: str = "gh-archive") -> SparkSession:
-    endpoint = os.getenv("S3_ENDPOINT", "http://minio:9000")
+    endpoint = resolve_s3_endpoint()
     bucket_region = os.getenv("MINIO_REGION", "us-east-1")
     access_key = os.getenv(
         "AWS_ACCESS_KEY_ID", os.getenv("MINIO_ROOT_USER", "minioadmin")
