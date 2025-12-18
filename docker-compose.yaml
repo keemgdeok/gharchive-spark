@@ -54,7 +54,7 @@ services:
       - SPARK_WORKER_CORES=${SPARK_WORKER_CORES}
       - SPARK_WORKER_MEMORY=${SPARK_WORKER_MEMORY}
       - SPARK_WORKER_WEBUI=8081
-    command: ["/bin/bash", "-c", "/opt/spark/sbin/start-worker.sh spark://${SPARK_MASTER_HOST}:${SPARK_MASTER_PORT} --webui-port ${SPARK_WORKER_WEBUI}"]
+    command: ["/bin/bash", "-c", "/opt/spark/sbin/start-worker.sh --webui-port $$SPARK_WORKER_WEBUI spark://${SPARK_MASTER_HOST}:${SPARK_MASTER_PORT}"]
     ports:
       - "8081:8081"
     volumes:
@@ -92,7 +92,7 @@ services:
       - SPARK_WORKER_CORES=${SPARK_WORKER_CORES}
       - SPARK_WORKER_MEMORY=${SPARK_WORKER_MEMORY}
       - SPARK_WORKER_WEBUI=8082
-    command: ["/bin/bash", "-c", "/opt/spark/sbin/start-worker.sh spark://${SPARK_MASTER_HOST}:${SPARK_MASTER_PORT} --webui-port ${SPARK_WORKER_WEBUI}"]
+    command: ["/bin/bash", "-c", "/opt/spark/sbin/start-worker.sh --webui-port $$SPARK_WORKER_WEBUI spark://${SPARK_MASTER_HOST}:${SPARK_MASTER_PORT}"]
     ports:
       - "8082:8082"
     volumes:
