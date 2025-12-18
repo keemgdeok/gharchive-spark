@@ -19,6 +19,8 @@ services:
     ports:
       - "${SPARK_MASTER_PORT}:${SPARK_MASTER_PORT}"
       - "${SPARK_MASTER_WEBUI}:${SPARK_MASTER_WEBUI}"
+      # 실시간 Spark UI(Driver) 포트 범위 (spark-submit을 spark-master 컨테이너에서 실행하는 client 모드 기준)
+      - "4040-4050:4040-4050"
     volumes:
       - spark-event-logs:/opt/spark/event-logs
       - spark-warehouse:/opt/spark/warehouse
