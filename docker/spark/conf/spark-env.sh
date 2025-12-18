@@ -10,6 +10,9 @@ export SPARK_EXECUTOR_MEMORY=${SPARK_EXECUTOR_MEMORY:-2G}
 export SPARK_LOCAL_DIRS=${SPARK_LOCAL_DIR:-/opt/spark/work-dir}
 export PYSPARK_PYTHON=python3
 
+# Docker 포트 publish(4040 등)를 위해 driver/client JVM이 IPv4 소켓을 우선 사용하도록 강제
+export SPARK_SUBMIT_OPTS="${SPARK_SUBMIT_OPTS:-} -Djava.net.preferIPv4Stack=true -Djava.net.preferIPv6Addresses=false"
+
 # Hadoop 클라이언트가 있을 때만 CLASSPATH 확장
 if [ -x "${SPARK_HOME}/bin/hadoop" ]; then
   export SPARK_DIST_CLASSPATH=$(${SPARK_HOME}/bin/hadoop classpath)
