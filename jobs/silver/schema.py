@@ -38,9 +38,13 @@ BRONZE_SCHEMA = T.StructType(
             "payload",
             T.StructType(
                 [
+                    T.StructField("repository_id", T.LongType(), True),
                     T.StructField("push_id", T.LongType(), True),
                     T.StructField("size", T.IntegerType(), True),
                     T.StructField("distinct_size", T.IntegerType(), True),
+                    T.StructField("ref", T.StringType(), True),
+                    T.StructField("head", T.StringType(), True),
+                    T.StructField("before", T.StringType(), True),
                     T.StructField(
                         "commits",
                         T.ArrayType(

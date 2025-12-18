@@ -21,6 +21,9 @@ UTC = dt.timezone.utc
 def configure_logging(verbose: bool) -> None:
     level = logging.DEBUG if verbose else logging.INFO
     logging.basicConfig(level=level, format="%(asctime)s [%(levelname)s] %(message)s")
+    if verbose:
+        logging.getLogger("py4j").setLevel(logging.WARN)
+        logging.getLogger("pyspark").setLevel(logging.WARN)
 
 
 def parse_args() -> argparse.Namespace:
@@ -145,8 +148,8 @@ def show_corrupt_samples(*, raw_df, verbose: bool) -> None:
         corrupt_sample.show(truncate=False)
 
 
-def transform_push_commits(*, raw_df):
-    df = (
+def normalize_events(*, raw_df):
+    return (
         raw_df.filter(F.col("_corrupt_record").isNull())
         .withColumn(
             "created_at_ts",
@@ -157,8 +160,65 @@ def transform_push_commits(*, raw_df):
         .filter(F.col("dt").isNotNull())
     )
 
+
+def collect_push_payload_stats(*, events_df):
+    push_df = events_df.filter(F.col("type") == F.lit("PushEvent"))
+    row = push_df.agg(
+        F.count(F.lit(1)).alias("push_events"),
+        F.sum(
+            F.when(F.col("payload.commits").isNotNull(), F.lit(1)).otherwise(0)
+        ).alias("commits_not_null"),
+        F.sum(
+            F.when(F.size(F.col("payload.commits")) > 0, F.lit(1)).otherwise(0)
+        ).alias("commits_nonempty"),
+        F.sum(F.when(F.col("payload.size").isNotNull(), F.lit(1)).otherwise(0)).alias(
+            "size_not_null"
+        ),
+        F.sum(
+            F.when(F.col("payload.distinct_size").isNotNull(), F.lit(1)).otherwise(0)
+        ).alias("distinct_size_not_null"),
+    ).collect()[0]
+    return {
+        "push_events": int(row["push_events"]),
+        "commits_not_null": int(row["commits_not_null"] or 0),
+        "commits_nonempty": int(row["commits_nonempty"] or 0),
+        "size_not_null": int(row["size_not_null"] or 0),
+        "distinct_size_not_null": int(row["distinct_size_not_null"] or 0),
+    }
+
+
+def transform_push_events(*, events_df):
     return (
-        df.filter(F.col("type") == F.lit("PushEvent"))
+        events_df.filter(F.col("type") == F.lit("PushEvent"))
+        .select(
+            F.col("dt"),
+            F.col("created_at_ts"),
+            F.col("id").alias("event_id"),
+            F.col("actor.login").alias("actor_login"),
+            F.col("repo.name").alias("repo_name"),
+            F.col("payload.repository_id").alias("repository_id"),
+            F.col("payload.push_id").alias("push_id"),
+            F.col("payload.ref").alias("ref"),
+            F.col("payload.head").alias("head"),
+            F.col("payload.before").alias("before"),
+            F.col("payload.size").alias("push_size"),
+            F.col("payload.distinct_size").alias("push_distinct_size"),
+            F.when(
+                F.col("payload.commits").isNull(),
+                F.lit(None).cast("int"),
+            )
+            .otherwise(F.size(F.col("payload.commits")))
+            .alias("commit_count"),
+            F.col("public").alias("public"),
+            F.col("source_file"),
+        )
+        .filter(F.col("repo_name").isNotNull())
+    )
+
+
+def transform_push_commits(*, events_df):
+    return (
+        events_df.filter(F.col("type") == F.lit("PushEvent"))
         .withColumn("commit", F.explode_outer(F.col("payload.commits")))
         .select(
             F.col("dt"),
@@ -166,6 +226,7 @@ def transform_push_commits(*, raw_df):
             F.col("id").alias("event_id"),
             F.col("actor.login").alias("actor_login"),
             F.col("repo.name").alias("repo_name"),
+            F.col("payload.repository_id").alias("repository_id"),
             F.col("payload.push_id").alias("push_id"),
             F.col("payload.size").alias("push_size"),
             F.col("payload.distinct_size").alias("push_distinct_size"),
@@ -182,12 +243,12 @@ def transform_push_commits(*, raw_df):
     )
 
 
-def write_silver(*, commits_df, output_path: str, verbose: bool) -> None:
+def write_silver(*, df, output_path: str, verbose: bool) -> None:
     logging.info("write silver=%s", output_path)
-    logging.info("write partitions=%d", commits_df.rdd.getNumPartitions())
+    logging.info("write partitions=%d", df.rdd.getNumPartitions())
     if verbose:
-        commits_df.explain(True)
-    commits_df.write.mode("overwrite").partitionBy("dt").parquet(output_path)
+        df.explain(True)
+    df.write.mode("overwrite").partitionBy("dt").parquet(output_path)
 
 
 def post_checks(
@@ -196,6 +257,8 @@ def post_checks(
     output_path: str,
     target_date: dt.date,
     verbose: bool,
+    label: str,
+    preview_cols: list[str],
 ) -> None:
     if not path_exists(spark, output_path):
         raise RuntimeError(f"Silver 출력 경로가 생성되지 않았습니다: {output_path}")
@@ -205,29 +268,27 @@ def post_checks(
         files = list_files_under(spark, dt_partition)
         total_bytes = sum(size for _, size in files)
         logging.info(
-            "silver 파일 개수=%d 총크기=%d bytes (dt=%s)",
+            "silver(%s) 파일 개수=%d 총크기=%d bytes (dt=%s)",
+            label,
             len(files),
             total_bytes,
             target_date,
         )
     else:
-        logging.warning("dt 파티션이 없습니다(데이터가 없을 수 있음): %s", dt_partition)
+        logging.warning(
+            "silver(%s) dt 파티션이 없습니다(데이터가 없을 수 있음): %s",
+            label,
+            dt_partition,
+        )
 
     if verbose:
         preview = (
             spark.read.parquet(output_path)
             .filter(F.col("dt") == F.lit(target_date))
-            .select(
-                "dt",
-                "repo_name",
-                "actor_login",
-                "commit_sha",
-                "commit_author_email",
-                "created_at_ts",
-            )
+            .select(*preview_cols)
             .limit(20)
         )
-        logging.info("silver 미리보기(최대 20건)")
+        logging.info("silver(%s) 미리보기(최대 20건)", label)
         preview.show(truncate=False)
 
 
@@ -255,17 +316,71 @@ def main():
         raw_df = read_bronze(spark=spark, input_path=input_path)
         show_corrupt_samples(raw_df=raw_df, verbose=args.verbose)
 
-        commits_df = transform_push_commits(raw_df=raw_df)
-        output_path = build_silver_path(args.bucket, args.silver_prefix, "push_commits")
+        events_df = normalize_events(raw_df=raw_df)
+        push_stats = collect_push_payload_stats(events_df=events_df)
+        logging.info(
+            "PushEvent payload 통계 push=%d commits(non-null)=%d commits(non-empty)=%d size=%d distinct_size=%d",
+            push_stats["push_events"],
+            push_stats["commits_not_null"],
+            push_stats["commits_nonempty"],
+            push_stats["size_not_null"],
+            push_stats["distinct_size_not_null"],
+        )
+
+        push_events_df = transform_push_events(events_df=events_df)
+        push_events_path = build_silver_path(
+            args.bucket, args.silver_prefix, "push_events"
+        )
         write_silver(
-            commits_df=commits_df, output_path=output_path, verbose=args.verbose
+            df=push_events_df, output_path=push_events_path, verbose=args.verbose
         )
         post_checks(
             spark=spark,
-            output_path=output_path,
+            output_path=push_events_path,
             target_date=target_date,
             verbose=args.verbose,
+            label="push_events",
+            preview_cols=[
+                "dt",
+                "repo_name",
+                "actor_login",
+                "push_id",
+                "ref",
+                "head",
+                "before",
+                "commit_count",
+                "created_at_ts",
+            ],
         )
+
+        if push_stats["commits_nonempty"] > 0:
+            commits_df = transform_push_commits(events_df=events_df)
+            push_commits_path = build_silver_path(
+                args.bucket, args.silver_prefix, "push_commits"
+            )
+            write_silver(
+                df=commits_df, output_path=push_commits_path, verbose=args.verbose
+            )
+            post_checks(
+                spark=spark,
+                output_path=push_commits_path,
+                target_date=target_date,
+                verbose=args.verbose,
+                label="push_commits",
+                preview_cols=[
+                    "dt",
+                    "repo_name",
+                    "actor_login",
+                    "push_id",
+                    "commit_sha",
+                    "commit_author_email",
+                    "created_at_ts",
+                ],
+            )
+        else:
+            logging.warning(
+                "push_commits 생성을 건너뜁니다(commits 배열 없음 또는 비어있음)"
+            )
         logging.info("완료")
     finally:
         spark.stop()
