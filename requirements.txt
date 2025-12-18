@@ -1,7 +1,7 @@
 aiohttp==3.11.11
 boto3==1.42.10
 pandas==2.2.3
-pyspark==3.4.1
+pyspark==3.5.7
 requests==2.32.3
 
 # dev tools

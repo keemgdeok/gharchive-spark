@@ -11,6 +11,7 @@ services:
     hostname: ${SPARK_MASTER_HOST}
     environment:
       - SPARK_NO_DAEMONIZE=true
+      - PYTHONPATH=/opt/gharchive
       - AWS_ACCESS_KEY_ID=${MINIO_ROOT_USER}
       - AWS_SECRET_ACCESS_KEY=${MINIO_ROOT_PASSWORD}
       - AWS_REGION=${MINIO_REGION}
@@ -18,9 +19,12 @@ services:
     ports:
       - "${SPARK_MASTER_PORT}:${SPARK_MASTER_PORT}"
       - "${SPARK_MASTER_WEBUI}:${SPARK_MASTER_WEBUI}"
+      # 실시간 Spark UI(Driver) 포트 범위 (spark-submit을 spark-master 컨테이너에서 실행하는 client 모드 기준)
+      - "4040-4050:4040-4050"
     volumes:
       - spark-event-logs:/opt/spark/event-logs
       - spark-warehouse:/opt/spark/warehouse
+      - ./jobs:/opt/gharchive/jobs
       - ./docker/spark/conf:/opt/spark/conf
     networks:
       - gh-net
@@ -45,18 +49,20 @@ services:
     hostname: spark-worker-1
     environment:
       - SPARK_NO_DAEMONIZE=true
+      - PYTHONPATH=/opt/gharchive
       - AWS_ACCESS_KEY_ID=${MINIO_ROOT_USER}
       - AWS_SECRET_ACCESS_KEY=${MINIO_ROOT_PASSWORD}
       - AWS_REGION=${MINIO_REGION}
       - SPARK_WORKER_CORES=${SPARK_WORKER_CORES}
       - SPARK_WORKER_MEMORY=${SPARK_WORKER_MEMORY}
       - SPARK_WORKER_WEBUI=8081
-    command: ["/bin/bash", "-c", "/opt/spark/sbin/start-worker.sh spark://${SPARK_MASTER_HOST}:${SPARK_MASTER_PORT} --webui-port ${SPARK_WORKER_WEBUI}"]
+    command: ["/bin/bash", "-c", "/opt/spark/sbin/start-worker.sh --webui-port $$SPARK_WORKER_WEBUI spark://${SPARK_MASTER_HOST}:${SPARK_MASTER_PORT}"]
     ports:
       - "8081:8081"
     volumes:
       - spark-event-logs:/opt/spark/event-logs
       - spark-warehouse:/opt/spark/warehouse
+      - ./jobs:/opt/gharchive/jobs
       - ./docker/spark/conf:/opt/spark/conf
     networks:
       - gh-net
@@ -81,18 +87,20 @@ services:
     hostname: spark-worker-2
     environment:
       - SPARK_NO_DAEMONIZE=true
+      - PYTHONPATH=/opt/gharchive
       - AWS_ACCESS_KEY_ID=${MINIO_ROOT_USER}
       - AWS_SECRET_ACCESS_KEY=${MINIO_ROOT_PASSWORD}
       - AWS_REGION=${MINIO_REGION}
       - SPARK_WORKER_CORES=${SPARK_WORKER_CORES}
       - SPARK_WORKER_MEMORY=${SPARK_WORKER_MEMORY}
       - SPARK_WORKER_WEBUI=8082
-    command: ["/bin/bash", "-c", "/opt/spark/sbin/start-worker.sh spark://${SPARK_MASTER_HOST}:${SPARK_MASTER_PORT} --webui-port ${SPARK_WORKER_WEBUI}"]
+    command: ["/bin/bash", "-c", "/opt/spark/sbin/start-worker.sh --webui-port $$SPARK_WORKER_WEBUI spark://${SPARK_MASTER_HOST}:${SPARK_MASTER_PORT}"]
     ports:
       - "8082:8082"
     volumes:
       - spark-event-logs:/opt/spark/event-logs
       - spark-warehouse:/opt/spark/warehouse
+      - ./jobs:/opt/gharchive/jobs
       - ./docker/spark/conf:/opt/spark/conf
     networks:
       - gh-net
@@ -117,6 +125,7 @@ services:
     hostname: spark-history-server
     environment:
       - SPARK_NO_DAEMONIZE=true
+      - PYTHONPATH=/opt/gharchive
       - AWS_ACCESS_KEY_ID=${MINIO_ROOT_USER}
       - AWS_SECRET_ACCESS_KEY=${MINIO_ROOT_PASSWORD}
       - AWS_REGION=${MINIO_REGION}
@@ -126,6 +135,7 @@ services:
       - "${SPARK_HISTORY_PORT}:${SPARK_HISTORY_PORT}"
     volumes:
       - spark-event-logs:/opt/spark/event-logs
+      - ./jobs:/opt/gharchive/jobs
       - ./docker/spark/conf:/opt/spark/conf
     networks:
       - gh-net

@@ -7,10 +7,10 @@ TODO: Silver 데이터로 Gold 마트 생성
 import argparse
 import os
 
-from jobs.common.session import get_spark
+from jobs.spark_runtime import get_spark
 
 
-# 한국어 주석: 집계/튜닝 로직은 이후 채우기
+# 집계/튜닝 로직은 이후 채우기
 
 
 def main():

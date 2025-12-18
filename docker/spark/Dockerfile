@@ -1,9 +1,9 @@
 FROM eclipse-temurin:11-jre-jammy
 
-ARG SPARK_VERSION=3.4.1
+ARG SPARK_VERSION=3.5.7
 ARG HADOOP_VERSION=3
-ARG HADOOP_AWS_VERSION=3.3.2
-ARG AWS_SDK_VERSION=1.11.1026
+ARG HADOOP_AWS_VERSION=3.3.4
+ARG AWS_SDK_VERSION=1.12.262
 
 ENV SPARK_HOME=/opt/spark
 ENV PATH=${SPARK_HOME}/bin:${SPARK_HOME}/sbin:${PATH}
@@ -23,7 +23,7 @@ RUN curl -fsSL https://repo1.maven.org/maven2/org/apache/hadoop/hadoop-aws/${HAD
     && curl -fsSL https://repo1.maven.org/maven2/com/amazonaws/aws-java-sdk-bundle/${AWS_SDK_VERSION}/aws-java-sdk-bundle-${AWS_SDK_VERSION}.jar -o ${SPARK_HOME}/jars/aws-java-sdk-bundle-${AWS_SDK_VERSION}.jar
 
 # Python 라이브러리 설치
-RUN pip3 install --no-cache-dir pyspark==${SPARK_VERSION} pandas boto3 requests
+RUN pip3 install --no-cache-dir pyspark==${SPARK_VERSION} pandas boto3 requests aiohttp
 
 # 로그 및 이벤트 디렉토리 생성
 RUN mkdir -p ${SPARK_HOME}/conf ${SPARK_HOME}/logs ${SPARK_HOME}/event-logs ${SPARK_HOME}/work-dir
