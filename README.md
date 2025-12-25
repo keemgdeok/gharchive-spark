@@ -40,20 +40,20 @@ ______________________________________________________________________
 
 \#
 
-#### End-to-end flow
+### End-to-end flow
 
 \#
 
-**Flow**
-    `Bronze(원시 JSON) → Silver(중첩 해제/정제 Parquet) → Gold(집계 마트)`
+**Flow** <br>
+`Bronze(원시 JSON) → Silver(중첩 해제/정제 Parquet) → Gold(집계 마트)`
 
-**Storage**
-    MinIO `bronze/`, `silver/`, `gold/` 경로 사용
+**Storage** <br>
+MinIO `bronze/`, `silver/`, `gold/` 경로 사용
 
-**Observability**
-    Spark UI(Driver) + Spark History Server 이벤트 로그
+**Observability** <br>
+Spark UI(Driver) + Spark History Server 이벤트 로그
 
-#### Technical concerns
+### Technical concerns
 
 \#
 
@@ -66,7 +66,7 @@ ______________________________________________________________________
 | Component | Details |
 | :-- | :-- |
 | Architecture | <ul><li>Docker Compose 기반 Spark Cluster + MinIO + History Server</li><li>Medallion Architecture (Bronze/Silver/Gold)</li><li>S3A 연동 로컬 S3 호환 레이크</li></ul> |
-| Ingestor | <ul><li>aiohttp 비동기 다운로드</li><li>재시도/타임아웃/멱등 업로드</li><li>`bronze/YYYY/MM/DD/` 적재</li></ul> |
+| Bronze | <ul><li>aiohttp 비동기 다운로드</li><li>재시도/타임아웃/멱등 업로드</li><li>`bronze/YYYY/MM/DD/` 적재</li></ul> |
 | Silver | <ul><li>명시적 Superset 스키마 적용</li><li>explode/col("a.b.c")로 중첩 해제</li><li>`partitionBy("dt")` Parquet 저장</li></ul> |
 | Performance | <ul><li>AQE 활성화</li><li>`spark.sql.shuffle.partitions` 튜닝</li><li>Small File/Data Skew 시나리오 재현/개선</li></ul> |
 | Observability | <ul><li>Spark UI(4040-4050)</li><li>Spark History Server(18080)</li><li>Event Log 보존 정책</li></ul> |
@@ -95,13 +95,13 @@ ______________________________________________________________________
 
 ## Quick Start
 
-#### Prerequisites
+### Prerequisites
 
 - Docker Engine + Docker Compose v2
 - Python 3.10+
 - pre-commit
 
-#### Environment setup
+### Environment setup
 
 1. **.env 생성**
    ```bash
@@ -128,6 +128,7 @@ ______________________________________________________________________
    ```
 
 2. **Docker Compose 실행**
+
    빌드/기동 후 health 확인
    ```bash
    docker compose up -d --build
@@ -135,6 +136,7 @@ ______________________________________________________________________
    ```
 
 3. **로컬 Python 환경**
+
    venv 구성 및 의존성 설치
    ```bash
    python -m venv .venv
@@ -143,6 +145,7 @@ ______________________________________________________________________
    ```
 
 4. **Bronze 수집**
+
    로컬 실행 시 S3 엔드포인트 환경 변수 필요
    ```bash
    export S3_ENDPOINT=http://localhost:9000
@@ -152,7 +155,8 @@ ______________________________________________________________________
    --hour 2024-05-21-00 --concurrency 1
    ```
 
-5. **Silver 변환(Flatten)**
+5. **Silver 변환**
+
    Spark 클러스터에서 실행
    ```bash
     docker compose exec -T spark-master \
@@ -163,11 +167,13 @@ ______________________________________________________________________
    ```
 
 6. **UI 접근**
-   - Spark Master: `http://localhost:8080`
-   - Spark Worker: `http://localhost:8081`, `http://localhost:8082`
-   - Spark UI(실행 중 Driver): `http://localhost:4040` (점유 시 4041, 4042...)
-   - Spark History Server: `http://localhost:18080/?showIncomplete=true`
-   - MinIO Console: `http://localhost:9090`
+    ```text
+    Spark Master: http://localhost:8080
+    Spark Worker: http://localhost:8081, http://localhost:8082
+    Spark UI(실행 중 Driver): http://localhost:4040 (점유 시 4041, 4042 ...)
+    Spark History Server: http://localhost:18080/?showIncomplete=true
+    MinIO Console: http://localhost:9090
+    ```
 
 <br>
 
