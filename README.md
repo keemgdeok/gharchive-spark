@@ -98,8 +98,6 @@ ______________________________________________________________________
 ### Prerequisites
 
 - Docker Engine + Docker Compose v2
-- Python 3.10+
-- pre-commit
 
 ### Environment setup
 
@@ -128,45 +126,29 @@ ______________________________________________________________________
    ```
 
 2. **Docker Compose 실행**
-
-   빌드/기동 후 health 확인
    ```bash
    docker compose up -d --build
    docker compose ps
    ```
 
-3. **로컬 Python 환경**
-
-   venv 구성 및 의존성 설치
+3. **Bronze 수집**
    ```bash
-   python -m venv .venv
-   source .venv/bin/activate
-   pip install -r requirements.txt
+   # 기본 S3 엔드포인트는 http://minio:9000
+   docker compose exec -T spark-master \
+     python3 -m jobs.bronze.ingest \
+     --hour 2024-05-21-00 --concurrency 1
    ```
 
-4. **Bronze 수집**
-
-   로컬 실행 시 S3 엔드포인트 환경 변수 필요
+4. **Silver 변환**
    ```bash
-   export S3_ENDPOINT=http://localhost:9000
-   export AWS_ACCESS_KEY_ID=minioadmin
-   export AWS_SECRET_ACCESS_KEY=minioadmin
-   python -m jobs.bronze.ingest \
-   --hour 2024-05-21-00 --concurrency 1
+   docker compose exec -T spark-master \
+     /opt/spark/bin/spark-submit \
+     --master spark://spark-master:7077 \
+     /opt/gharchive/jobs/silver/flatten.py \
+     --hour 2024-05-21-00
    ```
 
-5. **Silver 변환**
-
-   Spark 클러스터에서 실행
-   ```bash
-    docker compose exec -T spark-master \
-    /opt/spark/bin/spark-submit \
-    --master spark://spark-master:7077 \
-    /opt/gharchive/jobs/silver/flatten.py \
-    --hour 2024-05-21-00
-   ```
-
-6. **UI 접근**
+5. **UI 접근**
     ```text
     Spark Master: http://localhost:8080
     Spark Worker: http://localhost:8081, http://localhost:8082
@@ -183,46 +165,46 @@ ______________________________________________________________________
 
 #### Infra
 
-빌드/기동, 상태 확인, 로그 확인, 종료
-
 ```bash
-docker compose up -d --build
-docker compose ps
-docker compose logs -f spark-master
-docker compose down
+
+docker compose up -d --build # 빌드/기동
+docker compose ps # 상태 확인
+docker compose logs -f spark-master # 로그 확인
+docker compose down # 종료
 ```
 
 #### S3A smoke test
 
-spark-shell 접속 후 S3A read/write 확인
-
 ```bash
-docker compose exec -T spark-master /opt/spark/bin/spark-shell \
+# pyspark 접속
+docker compose exec -T spark-master /opt/spark/bin/pyspark \
   --master spark://spark-master:7077
 ```
 
-```scala
+```python
+# S3A read/write 확인
 spark.range(5).write.mode("overwrite").parquet("s3a://gharchive/_smoketest/spark-3.5.7/")
 spark.read.parquet("s3a://gharchive/_smoketest/spark-3.5.7/").count()
 ```
 
 #### Bronze ingestion
 
-`--date`는 24시간 전체 처리, `--hour`는 단일 시간 처리
+
 
 ```bash
-export S3_ENDPOINT=http://localhost:9000
-export AWS_ACCESS_KEY_ID=minioadmin
-export AWS_SECRET_ACCESS_KEY=minioadmin
-python -m jobs.bronze.ingest --date 2024-05-21 --concurrency 8
-python -m jobs.bronze.ingest --hour 2024-05-21-00 --concurrency 1
+# --date는 24시간 전체 처리
+docker compose exec -T spark-master \
+  python3 -m jobs.bronze.ingest --date 2024-05-21 --concurrency 8
+
+# --hour는 단일 시간 처리
+docker compose exec -T spark-master \
+  python3 -m jobs.bronze.ingest --hour 2024-05-21-00 --concurrency 1
 ```
 
 #### Silver flatten
 
-`--date` 또는 `--hour` 선택, `--verbose`로 DEBUG 로그 출력
-
 ```bash
+# --verbose로 DEBUG 로그 출력
 docker compose exec -T spark-master /opt/spark/bin/spark-submit \
   --master spark://spark-master:7077 \
   /opt/gharchive/jobs/silver/flatten.py --date 2024-05-21 --verbose
