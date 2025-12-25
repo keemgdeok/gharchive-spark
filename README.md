@@ -133,7 +133,7 @@ ______________________________________________________________________
 
 3. **Bronze 수집**
    ```bash
-   # 기본 S3 엔드포인트는 http://minio:9000
+   # 기본 S3 엔드포인트 http://minio:9000
    docker compose exec -T spark-master \
      python3 -m jobs.bronze.ingest \
      --hour 2024-05-21-00 --concurrency 1
@@ -192,11 +192,11 @@ spark.read.parquet("s3a://gharchive/_smoketest/spark-3.5.7/").count()
 
 
 ```bash
-# --date는 24시간 전체 처리
+# --date 24시간 전체 처리
 docker compose exec -T spark-master \
   python3 -m jobs.bronze.ingest --date 2024-05-21 --concurrency 8
 
-# --hour는 단일 시간 처리
+# --hour 단일 시간 처리
 docker compose exec -T spark-master \
   python3 -m jobs.bronze.ingest --hour 2024-05-21-00 --concurrency 1
 ```
@@ -204,7 +204,7 @@ docker compose exec -T spark-master \
 #### Silver flatten
 
 ```bash
-# --verbose로 DEBUG 로그 출력
+# --verbose DEBUG 로그 출력
 docker compose exec -T spark-master /opt/spark/bin/spark-submit \
   --master spark://spark-master:7077 \
   /opt/gharchive/jobs/silver/flatten.py --date 2024-05-21 --verbose
