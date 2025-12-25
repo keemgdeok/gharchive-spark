@@ -45,7 +45,7 @@ ______________________________________________________________________
 \#
 
 **Flow** <br>
-`Bronze(원시 JSON) → Silver(중첩 해제/정제 Parquet) → Gold(집계 마트)`
+Bronze(원시 JSON) → Silver(중첩 해제/정제 Parquet) → Gold(집계 마트)
 
 **Storage** <br>
 MinIO `bronze/`, `silver/`, `gold/` 경로 사용
