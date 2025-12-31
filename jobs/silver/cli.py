@@ -34,7 +34,7 @@ def parse_date(text: str) -> dt.date:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Flatten bronze JSON to silver events_base + multi-track"
+        description="Transform bronze JSON to silver events_base + multi-track"
     )
     parser.add_argument("--bucket", default=os.getenv("MINIO_BUCKET", "gharchive"))
     parser.add_argument("--bronze-prefix", default="bronze")
