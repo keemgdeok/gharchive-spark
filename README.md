@@ -84,7 +84,7 @@ ______________________________________________________________________
 | `docker/spark/` | Spark 이미지 빌드 및 S3A JAR 포함 |
 | `docker/spark/conf/` | `spark-defaults.conf`, `spark-env.sh`, `log4j.properties` |
 | `jobs/bronze/` | GHArchive 비동기 수집 파이프라인 |
-| `jobs/silver/` | 스키마 정의 및 Flatten 변환 |
+| `jobs/silver/` | 스키마 정의 및 events_base/멀티 트랙 변환 |
 | `jobs/gold/` | Gold 집계 파이프라인 (TODO) |
 | `jobs/spark_runtime.py` | S3A/JAR/환경 변수 검증 |
 | `data/samples/schema-drift/` | 스키마 드리프트 샘플 |
@@ -144,7 +144,7 @@ ______________________________________________________________________
    docker compose exec -T spark-master \
      /opt/spark/bin/spark-submit \
      --master spark://spark-master:7077 \
-     /opt/gharchive/jobs/silver/flatten.py \
+     /opt/gharchive/jobs/silver/base.py \
      --hour 2024-05-21-00
    ```
 
@@ -201,13 +201,13 @@ docker compose exec -T spark-master \
   python3 -m jobs.bronze.ingest --hour 2024-05-21-00 --concurrency 1
 ```
 
-#### Silver flatten
+#### Silver base
 
 ```bash
 # --verbose DEBUG 로그 출력
 docker compose exec -T spark-master /opt/spark/bin/spark-submit \
   --master spark://spark-master:7077 \
-  /opt/gharchive/jobs/silver/flatten.py --date 2024-05-21 --verbose
+  /opt/gharchive/jobs/silver/base.py --date 2024-05-21 --verbose
 ```
 
 <br>
