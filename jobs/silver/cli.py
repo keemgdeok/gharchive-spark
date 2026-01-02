@@ -49,6 +49,18 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="DEBUG 로그 활성화",
     )
+    parser.add_argument(
+        "--coalesce",
+        type=int,
+        default=0,
+        help="출력 병합용 coalesce 파티션 수 (0이면 비활성)",
+    )
+    parser.add_argument(
+        "--repartition",
+        type=int,
+        default=0,
+        help="출력 재분배 파티션 수 (0이면 비활성)",
+    )
     return parser.parse_args()
 
 
