@@ -38,6 +38,8 @@ from jobs.silver.tracks import build_tracks
 def main() -> None:
     args = parse_args()
     configure_logging(args.verbose)
+    if args.coalesce > 0 and args.repartition > 0:
+        raise ValueError("coalesce/repartition은 동시에 사용할 수 없습니다")
 
     spark = get_spark("gh-archive-silver-base")
     try:
@@ -64,7 +66,13 @@ def main() -> None:
         base_df = build_events_base(events_df=events_df)
 
         base_path = build_silver_path(args.bucket, args.silver_prefix, "events_base")
-        write_silver(df=base_df, output_path=base_path, verbose=args.verbose)
+        write_silver(
+            df=base_df,
+            output_path=base_path,
+            verbose=args.verbose,
+            coalesce=args.coalesce,
+            repartition=args.repartition,
+        )
         post_checks(
             spark=spark,
             output_path=base_path,
@@ -88,7 +96,13 @@ def main() -> None:
 
         for label, df in build_tracks(base_df=base_partition_df):
             output_path = build_silver_path(args.bucket, args.silver_prefix, label)
-            write_silver(df=df, output_path=output_path, verbose=args.verbose)
+            write_silver(
+                df=df,
+                output_path=output_path,
+                verbose=args.verbose,
+                coalesce=args.coalesce,
+                repartition=args.repartition,
+            )
             post_checks(
                 spark=spark,
                 output_path=output_path,

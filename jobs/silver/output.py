@@ -8,9 +8,23 @@ from pyspark.sql import functions as F
 from jobs.spark_fs import list_files_under, path_exists
 
 
-def write_silver(*, df, output_path: str, verbose: bool) -> None:
+def write_silver(
+    *,
+    df,
+    output_path: str,
+    verbose: bool,
+    coalesce: int = 0,
+    repartition: int = 0,
+) -> None:
     logging.info("write silver=%s", output_path)
     logging.info("write partitions=%d", df.rdd.getNumPartitions())
+    # 작은 파일 완화를 위한 파티션 조정
+    if repartition and repartition > 0:
+        df = df.repartition(repartition)
+        logging.info("repartition 적용 partitions=%d", df.rdd.getNumPartitions())
+    elif coalesce and coalesce > 0:
+        df = df.coalesce(coalesce)
+        logging.info("coalesce 적용 partitions=%d", df.rdd.getNumPartitions())
     if verbose:
         df.explain(True)
     df.write.mode("overwrite").partitionBy("dt").parquet(output_path)

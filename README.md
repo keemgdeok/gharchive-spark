@@ -148,7 +148,16 @@ ______________________________________________________________________
      --hour 2024-05-21-00
    ```
 
-5. **UI 접근**
+5. **Gold 집계**
+   ```bash
+   docker compose exec -T spark-master \
+     /opt/spark/bin/spark-submit \
+     --master spark://spark-master:7077 \
+     /opt/gharchive/jobs/gold/base.py \
+     --hour 2024-05-21-00
+   ```
+
+6. **UI 접근**
     ```text
     Spark Master: http://localhost:8080
     Spark Worker: http://localhost:8081, http://localhost:8082
@@ -189,8 +198,6 @@ spark.read.parquet("s3a://gharchive/_smoketest/spark-3.5.7/").count()
 
 #### Bronze ingestion
 
-
-
 ```bash
 # --date 24시간 전체 처리
 docker compose exec -T spark-master \
@@ -208,6 +215,14 @@ docker compose exec -T spark-master \
 docker compose exec -T spark-master /opt/spark/bin/spark-submit \
   --master spark://spark-master:7077 \
   /opt/gharchive/jobs/silver/base.py --date 2024-05-21 --verbose
+```
+
+#### Gold base
+
+```bash
+docker compose exec -T spark-master /opt/spark/bin/spark-submit \
+  --master spark://spark-master:7077 \
+  /opt/gharchive/jobs/gold/base.py --date 2024-05-21
 ```
 
 <br>
