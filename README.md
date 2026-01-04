@@ -38,14 +38,12 @@ ______________________________________________________________________
 
 ## Architecture
 
-\#
 
-### End-to-end flow
+![GHArchive Spark Architecture](assets/gharchive-spark.svg)
 
-\#
 
 **Flow** <br>
-Bronze(원시 JSON) → Silver(중첩 해제/정제 Parquet) → Gold(집계 마트)
+Bronze(Raw JSON) → Silver(스키마 중첩 해제/Curated Parquet) → Gold(집계 데이터 마트)
 
 **Storage** <br>
 MinIO `bronze/`, `silver/`, `gold/` 경로 사용
@@ -85,7 +83,7 @@ ______________________________________________________________________
 | `docker/spark/conf/` | `spark-defaults.conf`, `spark-env.sh`, `log4j.properties` |
 | `jobs/bronze/` | GHArchive 비동기 수집 파이프라인 |
 | `jobs/silver/` | 스키마 정의 및 events_base/멀티 트랙 변환 |
-| `jobs/gold/` | Gold 집계 파이프라인 (TODO) |
+| `jobs/gold/` | Gold 집계 파이프라인 |
 | `jobs/spark_runtime.py` | S3A/JAR/환경 변수 검증 |
 | `data/samples/schema-drift/` | 스키마 드리프트 샘플 |
 
@@ -108,13 +106,18 @@ ______________________________________________________________________
    HADOOP_VERSION=3
    HADOOP_AWS_VERSION=3.3.4
    AWS_SDK_VERSION=1.12.262
+   PYTHON_VERSION=3.10
 
    SPARK_MASTER_HOST=spark-master
    SPARK_MASTER_PORT=7077
    SPARK_MASTER_WEBUI=8080
    SPARK_WORKER_CORES=2
-   SPARK_WORKER_MEMORY=4G
+   SPARK_WORKER_MEMORY=2G
    SPARK_HISTORY_PORT=18080
+   SPARK_DRIVER_MEMORY=2G
+   SPARK_EXECUTOR_MEMORY=1G
+   SPARK_EXECUTOR_CORES=2
+   SPARK_LOCAL_DIR=/opt/spark/work-dir
 
    MINIO_ROOT_USER=minioadmin
    MINIO_ROOT_PASSWORD=minioadmin
@@ -122,6 +125,9 @@ ______________________________________________________________________
    MINIO_PORT=9000
    MINIO_CONSOLE_PORT=9090
    MINIO_BUCKET=gharchive
+   S3_ENDPOINT=http://minio:9000
+
+   COMPOSE_PROJECT_NAME=gharchive-spark
    EOF
    ```
 
