@@ -110,6 +110,44 @@ services:
       timeout: 10s
       retries: 5
 
+  spark-worker-3:
+    build:
+      context: ./docker/spark
+      args:
+        SPARK_VERSION: ${SPARK_VERSION}
+        HADOOP_VERSION: ${HADOOP_VERSION}
+        HADOOP_AWS_VERSION: ${HADOOP_AWS_VERSION}
+        AWS_SDK_VERSION: ${AWS_SDK_VERSION}
+    depends_on:
+      spark-master:
+        condition: service_healthy
+    container_name: spark-worker-3
+    hostname: spark-worker-3
+    environment:
+      - SPARK_NO_DAEMONIZE=true
+      - PYTHONPATH=/opt/gharchive
+      - AWS_ACCESS_KEY_ID=${MINIO_ROOT_USER}
+      - AWS_SECRET_ACCESS_KEY=${MINIO_ROOT_PASSWORD}
+      - AWS_REGION=${MINIO_REGION}
+      - SPARK_WORKER_CORES=${SPARK_WORKER_CORES}
+      - SPARK_WORKER_MEMORY=${SPARK_WORKER_MEMORY}
+      - SPARK_WORKER_WEBUI=8083
+    command: ["/bin/bash", "-c", "/opt/spark/sbin/start-worker.sh --webui-port $$SPARK_WORKER_WEBUI spark://${SPARK_MASTER_HOST}:${SPARK_MASTER_PORT}"]
+    ports:
+      - "8083:8083"
+    volumes:
+      - spark-event-logs:/opt/spark/event-logs
+      - spark-warehouse:/opt/spark/warehouse
+      - ./jobs:/opt/gharchive/jobs
+      - ./docker/spark/conf:/opt/spark/conf
+    networks:
+      - gh-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8083"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
   spark-history-server:
     build:
       context: ./docker/spark

@@ -160,7 +160,7 @@ ______________________________________________________________________
 6. **UI 접근**
     ```text
     Spark Master: http://localhost:8080
-    Spark Worker: http://localhost:8081, http://localhost:8082
+    Spark Worker: http://localhost:8081, http://localhost:8082, http://localhost:8083
     Spark UI(실행 중 Driver): http://localhost:4040 (점유 시 4041, 4042 ...)
     Spark History Server: http://localhost:18080/?showIncomplete=true
     MinIO Console: http://localhost:9090
