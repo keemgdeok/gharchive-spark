@@ -46,10 +46,10 @@ ______________________________________________________________________
 Bronze(Raw JSON) → Silver(스키마 중첩 해제/Curated Parquet) → Gold(집계 데이터 마트)
 
 **Storage** <br>
-MinIO `bronze/`, `silver/`, `gold/` 경로 사용
+MinIO `bronze/`, `silver/`, `gold/` 사용
 
 **Observability** <br>
-Spark UI(Driver) + Spark History Server 이벤트 로그
+Spark UI(Driver) + Spark History Server
 
 ### Technical concerns
 
@@ -63,10 +63,11 @@ ______________________________________________________________________
 
 | Component | Details |
 | :-- | :-- |
-| Architecture | <ul><li>Docker Compose 기반 Spark Cluster + MinIO + History Server</li><li>Medallion Architecture (Bronze/Silver/Gold)</li><li>S3A 연동 로컬 S3 호환 레이크</li></ul> |
+| Architecture | <ul><li>Container First: Spark/MinIO/History Server</li><li>Medallion Architecture (Bronze/Silver/Gold)</li><li>S3A 연동 로컬 S3 호환 레이크</li></ul> |
 | Bronze | <ul><li>aiohttp 비동기 다운로드</li><li>재시도/타임아웃/멱등 업로드</li><li>`bronze/YYYY/MM/DD/` 적재</li></ul> |
-| Silver | <ul><li>명시적 Superset 스키마 적용</li><li>explode/col("a.b.c")로 중첩 해제</li><li>`partitionBy("dt")` Parquet 저장</li></ul> |
-| Performance | <ul><li>AQE 활성화</li><li>`spark.sql.shuffle.partitions` 튜닝</li><li>Small File/Data Skew 시나리오 재현/개선</li></ul> |
+| Silver | <ul><li>payload_raw 보존 + Superset 스키마로 드리프트 대응</li><li>explode/col 중첩 해제</li><li>`partitionBy("dt")` Parquet 저장</li></ul> |
+| Performance | <ul><li>AQE 활성화</li><li>`spark.sql.shuffle.partitions` 튜닝</li><li>Small File: coalesce/repartition</li><li>Data Skew: salting/broadcast join</li></ul> |
+| Gold | <ul><li>top_repos/event_type/top_repo_event_types 집계</li><li>parquet/csv 출력</li><li>coalesce로 단일 파일 생성</li></ul> |
 | Observability | <ul><li>Spark UI(4040-4050)</li><li>Spark History Server(18080)</li><li>Event Log 보존 정책</li></ul> |
 | Quality | <ul><li>ruff + mypy + pre-commit</li><li>Docker 기반 재현</li></ul> |
 
@@ -81,10 +82,10 @@ ______________________________________________________________________
 | `docker-compose.yaml` | Spark/MinIO/History Server 인프라 정의 |
 | `docker/spark/` | Spark 이미지 빌드 및 S3A JAR 포함 |
 | `docker/spark/conf/` | `spark-defaults.conf`, `spark-env.sh`, `log4j.properties` |
-| `jobs/bronze/` | GHArchive 비동기 수집 파이프라인 |
-| `jobs/silver/` | 스키마 정의 및 events_base/멀티 트랙 변환 |
-| `jobs/gold/` | Gold 집계 파이프라인 |
-| `jobs/spark_runtime.py` | S3A/JAR/환경 변수 검증 |
+| `jobs/bronze/` | <ul><li>GHArchive .json.gz 수집</li><li>비동기 다운로드/재시도/멱등 업로드</li><li>bronze 경로 적재</li></ul> |
+| `jobs/silver/` | <ul><li>이벤트 정규화</li><li>중첩 해제/트랙 변환</li><li>스키마 드리프트 대응</li></ul> |
+| `jobs/gold/` | <ul><li>Gold 집계 마트 생성</li><li>Skew/Broadcast 시나리오 포함</li><li>parquet/csv 출력</li></ul> |
+| `jobs/spark_runtime.py` | <ul><li>S3A 설정/크리덴셜/JAR 검증</li><li>Spark 런타임 초기화 유틸</li></ul> |
 | `data/samples/schema-drift/` | 스키마 드리프트 샘플 |
 
 <br>
