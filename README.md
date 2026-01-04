@@ -234,16 +234,46 @@ docker compose exec -T spark-master /opt/spark/bin/spark-submit \
 
 <br>
 
-<!--
 ______________________________________________________________________
 
- ## Troubleshooting Log
+## Troubleshooting Log
 
-| Problem | Before | After | Evidence | Notes |
-| :-- | :-- | :-- | :-- | :-- |
-| Small File | TBD | TBD | Spark UI 캡처 경로 | coalesce(N), AQE 설정 |
-| Data Skew | TBD | TBD | Spark UI 캡처 경로 | salting/broadcast 적용 |
-| Nested Schema | TBD | TBD | explain() 로그 | 스키마 드리프트 대응 | -->
+<details>
+  <summary>Schema Drift (스키마 드리프트)</summary>
+
+  - Problem: 2025-10-09 (UTC) 이후 PushEvent payload 필드(size/distinct_size/commits) 누락(v2) 발생
+  - Solution: payload_raw 보존 + Superset 스키마(`jobs/silver/schemas/*.json`)로 `from_json` 파싱
+  - Validation: `payload_parse_ok`/`push_payload_variant` 분포로 파싱 실패/버전 확인
+  - Evidence: 샘플 비교 결과/TBD, 파싱 로그 스냅샷 경로/TBD
+</details>
+
+<details>
+  <summary>Nested Schema (중첩 스키마)</summary>
+
+  - Problem: payload 중첩 구조(배열/오브젝트)로 직접 분석이 어려움
+  - Solution: `with_payload`로 구조체 파싱 후 `col("payload.*")`로 전개, commits는 `explode_outer` 적용
+  - Validation: `commit_sha` null 필터 결과/`--verbose` `explain(True)`로 변환 확인
+  - Evidence: explain 로그 경로/TBD, 결과 스냅샷 경로/TBD
+</details>
+
+<details>
+  <summary>Small File (작은 파일)</summary>
+
+  - Problem: `partitionBy("dt")` 저장 시 기본 파티션 수가 많으면 작은 파일이 다량 생성됨
+  - Solution: Silver `--repartition/--coalesce`, Gold `--coalesce`로 파일 수 조정 + AQE coalescePartitions 활성화
+  - Validation: `write partitions`/`silver(...) 파일 개수` 로그로 전후 비교
+  - Evidence: Spark UI 캡처 경로/TBD, 로그 스냅샷 경로/TBD
+</details>
+
+<details>
+  <summary>Data Skew (데이터 쏠림)</summary>
+
+  - Problem: 상위 레포에 이벤트가 집중되어 집계 Task 편차 발생
+  - Repro: `--skew-multiplier`로 상위 레포 이벤트 복제 (`inflate_skew`)
+  - Solution: `salted_repo_counts`로 repo_name + rand salt 집계 후 재집계, 필요 시 `--broadcast-dim` 적용
+  - Validation: `--explain`에서 Salting 집계/브로드캐스트 조인 여부 확인
+  - Evidence: Spark UI 캡처 경로/TBD, explain 로그 경로/TBD
+</details>
 
 <br>
 
