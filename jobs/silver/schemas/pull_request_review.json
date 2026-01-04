@@ -1,0 +1,45 @@
+{
+  "fields": [
+    {
+      "metadata": {},
+      "name": "id",
+      "nullable": true,
+      "type": "long"
+    },
+    {
+      "metadata": {},
+      "name": "state",
+      "nullable": true,
+      "type": "string"
+    },
+    {
+      "metadata": {},
+      "name": "user",
+      "nullable": true,
+      "type": {
+        "fields": [
+          {
+            "metadata": {},
+            "name": "id",
+            "nullable": true,
+            "type": "long"
+          },
+          {
+            "metadata": {},
+            "name": "login",
+            "nullable": true,
+            "type": "string"
+          }
+        ],
+        "type": "struct"
+      }
+    },
+    {
+      "metadata": {},
+      "name": "submitted_at",
+      "nullable": true,
+      "type": "string"
+    }
+  ],
+  "type": "struct"
+}

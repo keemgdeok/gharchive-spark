@@ -1,0 +1,29 @@
+{
+  "fields": [
+    {
+      "metadata": {},
+      "name": "page_name",
+      "nullable": true,
+      "type": "string"
+    },
+    {
+      "metadata": {},
+      "name": "title",
+      "nullable": true,
+      "type": "string"
+    },
+    {
+      "metadata": {},
+      "name": "action",
+      "nullable": true,
+      "type": "string"
+    },
+    {
+      "metadata": {},
+      "name": "sha",
+      "nullable": true,
+      "type": "string"
+    }
+  ],
+  "type": "struct"
+}
