@@ -53,7 +53,17 @@ def parse_args() -> argparse.Namespace:
         "--top-event-types", type=int, default=20, help="상위 이벤트 타입 개수"
     )
     parser.add_argument(
+        "--daily-top-n",
+        type=int,
+        default=10,
+        help="일별 Top repos 개수(0이면 비활성화)",
+    )
+    parser.add_argument(
         "--skew-top-k", type=int, default=1, help="살팅 대상 상위 레포 개수"
+    )
+    parser.add_argument(
+        "--skew-repo",
+        help="쏠림 재현/살팅 대상 repo_name(미지정 시 상위 레포 사용)",
     )
     parser.add_argument("--salt-buckets", type=int, default=10, help="살팅 버킷 개수")
     parser.add_argument("--salt-seed", type=int, default=42, help="살팅 rand 시드")

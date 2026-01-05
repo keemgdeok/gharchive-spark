@@ -30,11 +30,38 @@ def read_events_base(*, spark, base_path: str, start_date: dt.date, end_date: dt
     )
 
 
-def write_gold(*, df: DataFrame, output_path: str, fmt: str, coalesce: int) -> None:
+def read_events_push(
+    *,
+    spark,
+    base_path: str,
+    start_date: dt.date,
+    end_date: dt.date,
+) -> DataFrame:
+    df = spark.read.parquet(base_path).select(
+        "dt",
+        "repo_name",
+        "ref",
+    )
+    return df.filter(
+        (F.col("dt") >= F.lit(start_date)) & (F.col("dt") <= F.lit(end_date))
+    )
+
+
+def write_gold(
+    *,
+    df: DataFrame,
+    output_path: str,
+    fmt: str,
+    coalesce: int,
+    partition_cols: list[str] | None = None,
+) -> None:
     logging.info("gold write path=%s format=%s coalesce=%d", output_path, fmt, coalesce)
     if coalesce and coalesce > 0:
         df = df.coalesce(coalesce)
+    writer = df.write.mode("overwrite")
+    if partition_cols:
+        writer = writer.partitionBy(*partition_cols)
     if fmt == "csv":
-        df.write.mode("overwrite").option("header", True).csv(output_path)
+        writer.option("header", True).csv(output_path)
     else:
-        df.write.mode("overwrite").parquet(output_path)
+        writer.parquet(output_path)

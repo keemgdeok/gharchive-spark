@@ -25,6 +25,48 @@ def pick_skewed_repos(repo_counts: DataFrame, top_k: int) -> list[str]:
     return [row["repo_name"] for row in repo_counts.limit(top_k).collect()]
 
 
+def resolve_skew_target(
+    *,
+    repo_counts: DataFrame,
+    preferred_repo: str | None,
+) -> str | None:
+    if preferred_repo:
+        matched = (
+            repo_counts.filter(F.col("repo_name") == F.lit(preferred_repo))
+            .limit(1)
+            .collect()
+        )
+        if matched:
+            return preferred_repo
+        logging.warning(
+            "지정 repo를 찾지 못해 상위 레포로 대체합니다: %s", preferred_repo
+        )
+    top_rows = repo_counts.limit(1).collect()
+    if not top_rows:
+        return None
+    return top_rows[0]["repo_name"]
+
+
+def resolve_skewed_repos(
+    *,
+    repo_counts: DataFrame,
+    top_k: int,
+    preferred_repo: str | None,
+) -> list[str]:
+    if preferred_repo:
+        matched = (
+            repo_counts.filter(F.col("repo_name") == F.lit(preferred_repo))
+            .limit(1)
+            .collect()
+        )
+        if matched:
+            return [preferred_repo]
+        logging.warning(
+            "지정 repo를 찾지 못해 상위 레포로 대체합니다: %s", preferred_repo
+        )
+    return pick_skewed_repos(repo_counts, top_k)
+
+
 def apply_salting(
     *,
     df: DataFrame,
