@@ -1,6 +1,5 @@
 """
 브론즈(JSON) -> 실버(events_base + 멀티 트랙)
-- TODO: Challenge #3 (중첩 스키마) payload_raw 보존 + 타입별 스키마 파싱
 """
 
 from __future__ import annotations
@@ -8,6 +7,7 @@ from __future__ import annotations
 import logging
 import sys
 
+from pyspark import StorageLevel
 from pyspark.sql import functions as F
 
 from jobs.spark_runtime import get_spark
@@ -32,7 +32,7 @@ from jobs.silver.output import (
     post_checks,
     write_silver,
 )
-from jobs.silver.tracks import build_tracks
+from jobs.silver.registry import build_tracks
 
 
 def main() -> None:
@@ -64,10 +64,14 @@ def main() -> None:
 
         events_df = normalize_events(events_df=events_df)
         base_df = build_events_base(events_df=events_df)
+        base_partition_df = base_df.filter(F.col("dt") == F.lit(target_date)).persist(
+            StorageLevel.DISK_ONLY
+        )
+        base_partition_df.count()
 
         base_path = build_silver_path(args.bucket, args.silver_prefix, "events_base")
         write_silver(
-            df=base_df,
+            df=base_partition_df,
             output_path=base_path,
             verbose=args.verbose,
             coalesce=args.coalesce,
@@ -88,9 +92,6 @@ def main() -> None:
             ],
         )
 
-        base_partition_df = spark.read.parquet(base_path).filter(
-            F.col("dt") == F.lit(target_date)
-        )
         if args.verbose:
             log_type_counts(base_df=base_partition_df)
 
@@ -115,6 +116,8 @@ def main() -> None:
 
         logging.info("완료")
     finally:
+        if "base_partition_df" in locals():
+            base_partition_df.unpersist()
         spark.stop()
 
 

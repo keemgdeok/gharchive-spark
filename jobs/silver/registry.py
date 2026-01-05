@@ -1,0 +1,162 @@
+from __future__ import annotations
+
+from jobs.silver.mappings import (
+    commit_comment_cols,
+    create_cols,
+    delete_cols,
+    discussion_cols,
+    fork_cols,
+    gollum_cols,
+    issue_comment_cols,
+    issues_cols,
+    member_cols,
+    pull_request_cols,
+    pull_request_review_cols,
+    pull_request_review_comment_cols,
+    release_cols,
+    watch_cols,
+)
+from jobs.silver.schema import (
+    COMMIT_COMMENT_PAYLOAD_SCHEMA,
+    CREATE_PAYLOAD_SCHEMA,
+    DELETE_PAYLOAD_SCHEMA,
+    DISCUSSION_PAYLOAD_SCHEMA,
+    FORK_PAYLOAD_SCHEMA,
+    GOLLUM_PAYLOAD_SCHEMA,
+    ISSUE_COMMENT_PAYLOAD_SCHEMA,
+    ISSUES_PAYLOAD_SCHEMA,
+    MEMBER_PAYLOAD_SCHEMA,
+    PULL_REQUEST_PAYLOAD_SCHEMA,
+    PULL_REQUEST_REVIEW_COMMENT_PAYLOAD_SCHEMA,
+    PULL_REQUEST_REVIEW_PAYLOAD_SCHEMA,
+    RELEASE_PAYLOAD_SCHEMA,
+    WATCH_PAYLOAD_SCHEMA,
+)
+from jobs.silver.tracks import (
+    make_simple_builder,
+    transform_public_events,
+    transform_push_commits,
+    transform_push_events,
+)
+
+TRACK_BUILDERS = [
+    ("events_push", transform_push_events),
+    ("push_commits", transform_push_commits),
+    (
+        "events_pull_request",
+        make_simple_builder(
+            "PullRequestEvent",
+            PULL_REQUEST_PAYLOAD_SCHEMA,
+            pull_request_cols,
+        ),
+    ),
+    (
+        "events_issues",
+        make_simple_builder(
+            "IssuesEvent",
+            ISSUES_PAYLOAD_SCHEMA,
+            issues_cols,
+        ),
+    ),
+    (
+        "events_issue_comment",
+        make_simple_builder(
+            "IssueCommentEvent",
+            ISSUE_COMMENT_PAYLOAD_SCHEMA,
+            issue_comment_cols,
+        ),
+    ),
+    (
+        "events_pull_request_review",
+        make_simple_builder(
+            "PullRequestReviewEvent",
+            PULL_REQUEST_REVIEW_PAYLOAD_SCHEMA,
+            pull_request_review_cols,
+        ),
+    ),
+    (
+        "events_pull_request_review_comment",
+        make_simple_builder(
+            "PullRequestReviewCommentEvent",
+            PULL_REQUEST_REVIEW_COMMENT_PAYLOAD_SCHEMA,
+            pull_request_review_comment_cols,
+        ),
+    ),
+    (
+        "events_commit_comment",
+        make_simple_builder(
+            "CommitCommentEvent",
+            COMMIT_COMMENT_PAYLOAD_SCHEMA,
+            commit_comment_cols,
+        ),
+    ),
+    (
+        "events_create",
+        make_simple_builder(
+            "CreateEvent",
+            CREATE_PAYLOAD_SCHEMA,
+            create_cols,
+        ),
+    ),
+    (
+        "events_delete",
+        make_simple_builder(
+            "DeleteEvent",
+            DELETE_PAYLOAD_SCHEMA,
+            delete_cols,
+        ),
+    ),
+    (
+        "events_discussion",
+        make_simple_builder(
+            "DiscussionEvent",
+            DISCUSSION_PAYLOAD_SCHEMA,
+            discussion_cols,
+        ),
+    ),
+    (
+        "events_fork",
+        make_simple_builder(
+            "ForkEvent",
+            FORK_PAYLOAD_SCHEMA,
+            fork_cols,
+        ),
+    ),
+    (
+        "events_gollum",
+        make_simple_builder(
+            "GollumEvent",
+            GOLLUM_PAYLOAD_SCHEMA,
+            gollum_cols,
+        ),
+    ),
+    (
+        "events_member",
+        make_simple_builder(
+            "MemberEvent",
+            MEMBER_PAYLOAD_SCHEMA,
+            member_cols,
+        ),
+    ),
+    ("events_public", transform_public_events),
+    (
+        "events_release",
+        make_simple_builder(
+            "ReleaseEvent",
+            RELEASE_PAYLOAD_SCHEMA,
+            release_cols,
+        ),
+    ),
+    (
+        "events_watch",
+        make_simple_builder(
+            "WatchEvent",
+            WATCH_PAYLOAD_SCHEMA,
+            watch_cols,
+        ),
+    ),
+]
+
+
+def build_tracks(*, base_df):
+    return [(label, builder(base_df=base_df)) for label, builder in TRACK_BUILDERS]
