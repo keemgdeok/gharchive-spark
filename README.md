@@ -67,7 +67,7 @@ ______________________________________________________________________
 | Bronze | <ul><li>aiohttp 비동기 다운로드</li><li>재시도/타임아웃/멱등 업로드</li><li>`bronze/YYYY/MM/DD/` 적재</li></ul> |
 | Silver | <ul><li>payload_raw 보존 + Superset 스키마로 드리프트 대응</li><li>explode/col 중첩 해제</li><li>`partitionBy("dt")` Parquet 저장</li></ul> |
 | Performance | <ul><li>AQE 활성화</li><li>`spark.sql.shuffle.partitions` 튜닝</li><li>Small File: coalesce/repartition</li><li>Data Skew: salting/broadcast join</li></ul> |
-| Gold | <ul><li>top_repos/event_type/top_repo_event_types 집계</li><li>parquet/csv 출력</li><li>coalesce로 단일 파일 생성</li></ul> |
+| Gold | <ul><li>top_repos/event_type/top_repo_event_types 집계</li><li>daily_top_repos(window), push_branch_ratio(master/main 비율) 추가</li><li>parquet/csv 출력</li><li>coalesce로 단일 파일 생성</li></ul> |
 | Observability | <ul><li>Spark UI(4040-4050)</li><li>Spark History Server(18080)</li><li>Event Log 보존 정책</li></ul> |
 | Quality | <ul><li>ruff + mypy + pre-commit</li><li>Docker 기반 재현</li></ul> |
 
@@ -229,7 +229,8 @@ docker compose exec -T spark-master /opt/spark/bin/spark-submit \
 ```bash
 docker compose exec -T spark-master /opt/spark/bin/spark-submit \
   --master spark://spark-master:7077 \
-  /opt/gharchive/jobs/gold/base.py --date 2024-05-21
+  /opt/gharchive/jobs/gold/base.py --date 2024-05-21 \
+  --daily-top-n 10
 ```
 
 <br>
@@ -245,7 +246,7 @@ ______________________________________________________________________
   | :-- | :-- |
   | Problem | 2025-10-09 (UTC) 이후 PushEvent payload 필드(size/distinct_size/commits) 누락(v2) 발생 |
   | Solution | payload_raw 보존 + Superset 스키마(`jobs/silver/schemas/*.json`)로 `from_json` 파싱 |
-  | Validation | `payload_parse_ok`/`push_payload_variant` 분포로 파싱 실패/버전 확인 |
+  | Validation | `payload_parse_ok`/`payload_variant`(키셋 해시) 분포로 파싱 실패/버전 확인 |
   | Evidence | 샘플 비교 결과/TBD, 파싱 로그 스냅샷 경로/TBD |
 </details>
 
