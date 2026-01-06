@@ -1,0 +1,17 @@
+{
+  "fields": [
+    {
+      "metadata": {},
+      "name": "id",
+      "nullable": true,
+      "type": "long"
+    },
+    {
+      "metadata": {},
+      "name": "login",
+      "nullable": true,
+      "type": "string"
+    }
+  ],
+  "type": "struct"
+}

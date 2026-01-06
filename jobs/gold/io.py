@@ -22,6 +22,7 @@ def read_events_base(*, spark, base_path: str, start_date: dt.date, end_date: dt
     df = spark.read.parquet(base_path).select(
         "dt",
         "repo_name",
+        "actor_login",
         "event_type",
         "event_id",
     )
@@ -30,11 +31,103 @@ def read_events_base(*, spark, base_path: str, start_date: dt.date, end_date: dt
     )
 
 
-def write_gold(*, df: DataFrame, output_path: str, fmt: str, coalesce: int) -> None:
+def read_events_push(
+    *,
+    spark,
+    base_path: str,
+    start_date: dt.date,
+    end_date: dt.date,
+) -> DataFrame:
+    df = spark.read.parquet(base_path).select(
+        "dt",
+        "repo_name",
+        "ref",
+    )
+    return df.filter(
+        (F.col("dt") >= F.lit(start_date)) & (F.col("dt") <= F.lit(end_date))
+    )
+
+
+def read_events_pull_request(
+    *,
+    spark,
+    base_path: str,
+    start_date: dt.date,
+    end_date: dt.date,
+) -> DataFrame:
+    df = spark.read.parquet(base_path).select(
+        "dt",
+        "repo_name",
+        "created_at_ts",
+        "action",
+        "pull_request_id",
+        "pull_request_number",
+        "pull_request_merged",
+        "pull_request_merged_at",
+        "commit_count",
+        "additions",
+        "deletions",
+        "changed_files",
+    )
+    return df.filter(
+        (F.col("dt") >= F.lit(start_date)) & (F.col("dt") <= F.lit(end_date))
+    )
+
+
+def read_events_pull_request_review(
+    *,
+    spark,
+    base_path: str,
+    start_date: dt.date,
+    end_date: dt.date,
+) -> DataFrame:
+    df = spark.read.parquet(base_path).select(
+        "dt",
+        "repo_name",
+        "pull_request_id",
+        "review_id",
+        "review_state",
+        "review_submitted_at",
+    )
+    return df.filter(
+        (F.col("dt") >= F.lit(start_date)) & (F.col("dt") <= F.lit(end_date))
+    )
+
+
+def read_events_pull_request_review_comment(
+    *,
+    spark,
+    base_path: str,
+    start_date: dt.date,
+    end_date: dt.date,
+) -> DataFrame:
+    df = spark.read.parquet(base_path).select(
+        "dt",
+        "repo_name",
+        "pull_request_id",
+        "comment_id",
+        "comment_created_at",
+    )
+    return df.filter(
+        (F.col("dt") >= F.lit(start_date)) & (F.col("dt") <= F.lit(end_date))
+    )
+
+
+def write_gold(
+    *,
+    df: DataFrame,
+    output_path: str,
+    fmt: str,
+    coalesce: int,
+    partition_cols: list[str] | None = None,
+) -> None:
     logging.info("gold write path=%s format=%s coalesce=%d", output_path, fmt, coalesce)
     if coalesce and coalesce > 0:
         df = df.coalesce(coalesce)
+    writer = df.write.mode("overwrite")
+    if partition_cols:
+        writer = writer.partitionBy(*partition_cols)
     if fmt == "csv":
-        df.write.mode("overwrite").option("header", True).csv(output_path)
+        writer.option("header", True).csv(output_path)
     else:
-        df.write.mode("overwrite").parquet(output_path)
+        writer.parquet(output_path)

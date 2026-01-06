@@ -1,0 +1,11 @@
+{
+  "fields": [
+    {
+      "metadata": {},
+      "name": "action",
+      "nullable": true,
+      "type": "string"
+    }
+  ],
+  "type": "struct"
+}
