@@ -69,6 +69,7 @@ ______________________________________________________________________
 | Performance | <ul><li>AQE 활성화</li><li>`spark.sql.shuffle.partitions` 튜닝</li><li>Small File: coalesce/repartition</li><li>Data Skew: salting/broadcast join</li></ul> |
 | Gold | <ul><li>top_repos/event_type/top_repo_event_types 집계</li><li>daily_top_repos(window), push_branch_ratio(master/main 비율) 추가</li><li>parquet/csv 출력</li><li>coalesce로 단일 파일 생성</li></ul> |
 | Observability | <ul><li>Spark UI(4040-4050)</li><li>Spark History Server(18080)</li><li>Event Log 보존 정책</li></ul> |
+| Orchestration | <ul><li>Airflow 2.10 (8088)</li><li>Bronze→Silver→Gold DAG</li><li>Backfill/Retry/Alerting</li></ul> |
 | Quality | <ul><li>ruff + mypy + pre-commit</li><li>Docker 기반 재현</li></ul> |
 
 <br>
@@ -79,9 +80,11 @@ ______________________________________________________________________
 
 | Path | Purpose |
 | :-- | :-- |
-| `docker-compose.yaml` | Spark/MinIO/History Server 인프라 정의 |
+| `docker-compose.yaml` | Spark/MinIO/History Server/Airflow 인프라 정의 |
 | `docker/spark/` | Spark 이미지 빌드 및 S3A JAR 포함 |
 | `docker/spark/conf/` | `spark-defaults.conf`, `spark-env.sh`, `log4j.properties` |
+| `docker/airflow/` | Airflow 이미지 (Spark/Amazon Provider 포함, DockerOperator 미사용) |
+| `airflow/dags/` | Airflow DAG 파일 (`gharchive_pipeline.py`) |
 | `jobs/bronze/` | <ul><li>GHArchive .json.gz 수집</li><li>비동기 다운로드/재시도/멱등 업로드</li><li>bronze 경로 적재</li></ul> |
 | `jobs/silver/` | <ul><li>이벤트 정규화</li><li>중첩 해제/트랙 변환</li><li>스키마 드리프트 대응</li></ul> |
 | `jobs/gold/` | <ul><li>Gold 집계 마트 생성</li><li>Skew/Broadcast 시나리오 포함</li><li>parquet/csv 출력</li></ul> |
@@ -166,6 +169,7 @@ ______________________________________________________________________
 
 6. **UI 접근**
     ```text
+    Airflow UI: http://localhost:8088 (ID/PW: airflow/airflow)
     Spark Master: http://localhost:8080
     Spark Worker: http://localhost:8081, http://localhost:8082, http://localhost:8083
     Spark UI(실행 중 Driver): http://localhost:4040 (점유 시 4041, 4042 ...)
@@ -203,15 +207,15 @@ spark.range(5).write.mode("overwrite").parquet("s3a://gharchive/_smoketest/spark
 spark.read.parquet("s3a://gharchive/_smoketest/spark-3.5.7/").count()
 ```
 
-#### Bronze ingestion
+#### Bronze ingestion (Airflow 컨테이너 기준)
 
 ```bash
 # --date 24시간 전체 처리
-docker compose exec -T spark-master \
+docker compose exec -T airflow-webserver \
   python3 -m jobs.bronze.ingest --date 2024-05-21 --concurrency 8
 
 # --hour 단일 시간 처리
-docker compose exec -T spark-master \
+docker compose exec -T airflow-webserver \
   python3 -m jobs.bronze.ingest --hour 2024-05-21-00 --concurrency 1
 ```
 
