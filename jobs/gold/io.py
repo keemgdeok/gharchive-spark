@@ -22,6 +22,7 @@ def read_events_base(*, spark, base_path: str, start_date: dt.date, end_date: dt
     df = spark.read.parquet(base_path).select(
         "dt",
         "repo_name",
+        "actor_login",
         "event_type",
         "event_id",
     )
@@ -41,6 +42,71 @@ def read_events_push(
         "dt",
         "repo_name",
         "ref",
+    )
+    return df.filter(
+        (F.col("dt") >= F.lit(start_date)) & (F.col("dt") <= F.lit(end_date))
+    )
+
+
+def read_events_pull_request(
+    *,
+    spark,
+    base_path: str,
+    start_date: dt.date,
+    end_date: dt.date,
+) -> DataFrame:
+    df = spark.read.parquet(base_path).select(
+        "dt",
+        "repo_name",
+        "created_at_ts",
+        "action",
+        "pull_request_id",
+        "pull_request_number",
+        "pull_request_merged",
+        "pull_request_merged_at",
+        "commit_count",
+        "additions",
+        "deletions",
+        "changed_files",
+    )
+    return df.filter(
+        (F.col("dt") >= F.lit(start_date)) & (F.col("dt") <= F.lit(end_date))
+    )
+
+
+def read_events_pull_request_review(
+    *,
+    spark,
+    base_path: str,
+    start_date: dt.date,
+    end_date: dt.date,
+) -> DataFrame:
+    df = spark.read.parquet(base_path).select(
+        "dt",
+        "repo_name",
+        "pull_request_id",
+        "review_id",
+        "review_state",
+        "review_submitted_at",
+    )
+    return df.filter(
+        (F.col("dt") >= F.lit(start_date)) & (F.col("dt") <= F.lit(end_date))
+    )
+
+
+def read_events_pull_request_review_comment(
+    *,
+    spark,
+    base_path: str,
+    start_date: dt.date,
+    end_date: dt.date,
+) -> DataFrame:
+    df = spark.read.parquet(base_path).select(
+        "dt",
+        "repo_name",
+        "pull_request_id",
+        "comment_id",
+        "comment_created_at",
     )
     return df.filter(
         (F.col("dt") >= F.lit(start_date)) & (F.col("dt") <= F.lit(end_date))

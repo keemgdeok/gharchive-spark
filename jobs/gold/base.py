@@ -1,39 +1,23 @@
 """
 실버 -> 골드 집계 파이프라인
 - Top repos, 이벤트 타입 집계
-- TODO: Challenge #1 데이터 쏠림 재현/완화(살팅 + 브로드캐스트 조인)
-- TODO: Challenge #2 작은 파일 완화(coalesce)
 """
 
 from __future__ import annotations
 
 import logging
 
-from pyspark.sql import functions as F
-
+from jobs.gold.agg.actor import build_actor_marts
+from jobs.gold.agg.daily import build_daily_top_repos
+from jobs.gold.agg.pr import build_pr_review_latency
+from jobs.gold.agg.push import build_push_branch_ratio
+from jobs.gold.agg.repo import build_repo_marts
 from jobs.gold.cli import configure_logging, parse_args, resolve_date_range
 from jobs.gold.io import (
     build_gold_path,
     build_silver_path,
     read_events_base,
-    read_events_push,
     write_gold,
-)
-from jobs.gold.metrics import (
-    attach_date_range,
-    build_repo_dim,
-    compute_daily_repo_counts,
-    compute_daily_topn,
-    compute_event_type_counts,
-    compute_push_branch_ratio,
-    compute_repo_counts,
-    compute_repo_event_type_counts,
-)
-from jobs.gold.skew import (
-    inflate_skew,
-    resolve_skew_target,
-    resolve_skewed_repos,
-    salted_repo_counts,
 )
 from jobs.spark_runtime import get_spark
 
@@ -66,120 +50,53 @@ def main() -> None:
         events_df = read_events_base(
             spark=spark, base_path=base_path, start_date=start_date, end_date=end_date
         )
-
-        base_repo_counts = compute_repo_counts(df=events_df)
-        skew_target_repo = resolve_skew_target(
-            repo_counts=base_repo_counts,
-            preferred_repo=args.skew_repo,
-        )
-        if args.skew_multiplier > 1:
-            if skew_target_repo:
-                events_df = inflate_skew(
-                    df=events_df,
-                    repo_name=skew_target_repo,
-                    multiplier=args.skew_multiplier,
-                )
-                base_repo_counts = compute_repo_counts(df=events_df)
-            else:
-                logging.warning("쏠림 대상 레포가 없어 skew 재현을 건너뜁니다")
-
-        skew_top_k = max(1, args.skew_top_k)
-        skewed_repos = resolve_skewed_repos(
-            repo_counts=base_repo_counts,
-            top_k=skew_top_k,
-            preferred_repo=args.skew_repo,
-        )
-        logging.info("salting 대상 repos=%s", skewed_repos)
-        if args.explain:
-            base_repo_counts.explain(True)
-
-        if args.disable_salting:
-            repo_counts = base_repo_counts
-        else:
-            # TODO: Challenge #1 데이터 쏠림 완화(살팅)
-            repo_counts = salted_repo_counts(
-                df=events_df,
-                skewed_repos=skewed_repos,
-                salt_buckets=max(1, args.salt_buckets),
-                salt_seed=args.salt_seed,
-            )
-            if args.explain:
-                repo_counts.explain(True)
-
-        top_repos = attach_date_range(
-            df=repo_counts.limit(max(1, args.top_n)),
+        explain = args.explain
+        events_df, repo_marts = build_repo_marts(
+            events_df=events_df,
+            args=args,
             start_date=start_date,
             end_date=end_date,
+            explain=explain,
         )
-
-        event_type_counts = attach_date_range(
-            df=compute_event_type_counts(df=events_df).limit(
-                max(1, args.top_event_types)
-            ),
+        actor_marts = build_actor_marts(
+            events_df=events_df,
+            args=args,
             start_date=start_date,
             end_date=end_date,
+            explain=explain,
         )
-
-        repo_dim = build_repo_dim(top_repos=top_repos)
-        if args.broadcast_dim:
-            # TODO: Challenge #1 브로드캐스트 조인으로 셔플 회피
-            repo_dim = F.broadcast(repo_dim)
-
-        repo_events = events_df.join(repo_dim, on="repo_name", how="inner")
-        if args.explain:
-            repo_events.explain(True)
-
-        repo_event_type_counts = attach_date_range(
-            df=compute_repo_event_type_counts(repo_events=repo_events),
+        daily_top_repos = build_daily_top_repos(
+            events_df=events_df,
+            args=args,
             start_date=start_date,
             end_date=end_date,
+            explain=explain,
         )
-
-        daily_top_repos = None
-        daily_top_n = max(0, args.daily_top_n)
-        if daily_top_n > 0:
-            daily_repo_counts = compute_daily_repo_counts(df=events_df)
-            daily_top_repos = attach_date_range(
-                df=compute_daily_topn(
-                    df=daily_repo_counts,
-                    metric_col="event_count",
-                    top_n=daily_top_n,
-                ),
-                start_date=start_date,
-                end_date=end_date,
-            )
-            if args.explain:
-                daily_top_repos.explain(True)
-
-        push_events_path = build_silver_path(
-            args.bucket,
-            args.silver_prefix,
-            "events_push",
-        )
-        push_events_df = read_events_push(
+        push_branch_ratio = build_push_branch_ratio(
             spark=spark,
-            base_path=push_events_path,
+            args=args,
             start_date=start_date,
             end_date=end_date,
+            explain=explain,
         )
-        push_branch_ratio = attach_date_range(
-            df=compute_push_branch_ratio(df=push_events_df),
+        pr_review_latency = build_pr_review_latency(
+            spark=spark,
+            args=args,
             start_date=start_date,
             end_date=end_date,
+            explain=explain,
         )
-        if args.explain:
-            push_branch_ratio.explain(True)
 
         # TODO: Challenge #2 작은 파일 완화(coalesce)
         write_gold(
-            df=top_repos,
+            df=repo_marts["top_repos"],
             output_path=build_gold_path(args.bucket, args.gold_prefix, "top_repos"),
             fmt=args.output_format,
             coalesce=args.coalesce,
             partition_cols=None,
         )
         write_gold(
-            df=event_type_counts,
+            df=repo_marts["event_type_counts"],
             output_path=build_gold_path(
                 args.bucket, args.gold_prefix, "event_type_counts"
             ),
@@ -188,9 +105,25 @@ def main() -> None:
             partition_cols=None,
         )
         write_gold(
-            df=repo_event_type_counts,
+            df=repo_marts["top_repo_event_types"],
             output_path=build_gold_path(
                 args.bucket, args.gold_prefix, "top_repo_event_types"
+            ),
+            fmt=args.output_format,
+            coalesce=args.coalesce,
+            partition_cols=None,
+        )
+        write_gold(
+            df=actor_marts["top_actors"],
+            output_path=build_gold_path(args.bucket, args.gold_prefix, "top_actors"),
+            fmt=args.output_format,
+            coalesce=args.coalesce,
+            partition_cols=None,
+        )
+        write_gold(
+            df=actor_marts["top_actor_event_types"],
+            output_path=build_gold_path(
+                args.bucket, args.gold_prefix, "top_actor_event_types"
             ),
             fmt=args.output_format,
             coalesce=args.coalesce,
@@ -210,6 +143,15 @@ def main() -> None:
             df=push_branch_ratio,
             output_path=build_gold_path(
                 args.bucket, args.gold_prefix, "push_branch_ratio"
+            ),
+            fmt=args.output_format,
+            coalesce=args.coalesce,
+            partition_cols=["dt"],
+        )
+        write_gold(
+            df=pr_review_latency,
+            output_path=build_gold_path(
+                args.bucket, args.gold_prefix, "pull_request_review_latency"
             ),
             fmt=args.output_format,
             coalesce=args.coalesce,
