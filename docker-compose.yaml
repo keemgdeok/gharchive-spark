@@ -15,7 +15,7 @@ services:
       - AWS_ACCESS_KEY_ID=${MINIO_ROOT_USER}
       - AWS_SECRET_ACCESS_KEY=${MINIO_ROOT_PASSWORD}
       - AWS_REGION=${MINIO_REGION}
-    command: ["/bin/bash", "-c", "/opt/spark/sbin/start-master.sh --host ${SPARK_MASTER_HOST} --port ${SPARK_MASTER_PORT} --webui-port ${SPARK_MASTER_WEBUI}"]
+    command: [ "/bin/bash", "-c", "/opt/spark/sbin/start-master.sh --host ${SPARK_MASTER_HOST} --port ${SPARK_MASTER_PORT} --webui-port ${SPARK_MASTER_WEBUI}" ]
     ports:
       - "${SPARK_MASTER_PORT}:${SPARK_MASTER_PORT}"
       - "${SPARK_MASTER_WEBUI}:${SPARK_MASTER_WEBUI}"
@@ -29,7 +29,7 @@ services:
     networks:
       - gh-net
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:${SPARK_MASTER_WEBUI}"]
+      test: [ "CMD", "curl", "-f", "http://localhost:${SPARK_MASTER_WEBUI}" ]
       interval: 30s
       timeout: 10s
       retries: 5
@@ -56,7 +56,7 @@ services:
       - SPARK_WORKER_CORES=${SPARK_WORKER_CORES}
       - SPARK_WORKER_MEMORY=${SPARK_WORKER_MEMORY}
       - SPARK_WORKER_WEBUI=8081
-    command: ["/bin/bash", "-c", "/opt/spark/sbin/start-worker.sh --webui-port $$SPARK_WORKER_WEBUI spark://${SPARK_MASTER_HOST}:${SPARK_MASTER_PORT}"]
+    command: [ "/bin/bash", "-c", "/opt/spark/sbin/start-worker.sh --webui-port $$SPARK_WORKER_WEBUI spark://${SPARK_MASTER_HOST}:${SPARK_MASTER_PORT}" ]
     ports:
       - "8081:8081"
     volumes:
@@ -67,7 +67,7 @@ services:
     networks:
       - gh-net
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8081"]
+      test: [ "CMD", "curl", "-f", "http://localhost:8081" ]
       interval: 30s
       timeout: 10s
       retries: 5
@@ -94,7 +94,7 @@ services:
       - SPARK_WORKER_CORES=${SPARK_WORKER_CORES}
       - SPARK_WORKER_MEMORY=${SPARK_WORKER_MEMORY}
       - SPARK_WORKER_WEBUI=8082
-    command: ["/bin/bash", "-c", "/opt/spark/sbin/start-worker.sh --webui-port $$SPARK_WORKER_WEBUI spark://${SPARK_MASTER_HOST}:${SPARK_MASTER_PORT}"]
+    command: [ "/bin/bash", "-c", "/opt/spark/sbin/start-worker.sh --webui-port $$SPARK_WORKER_WEBUI spark://${SPARK_MASTER_HOST}:${SPARK_MASTER_PORT}" ]
     ports:
       - "8082:8082"
     volumes:
@@ -105,7 +105,7 @@ services:
     networks:
       - gh-net
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8082"]
+      test: [ "CMD", "curl", "-f", "http://localhost:8082" ]
       interval: 30s
       timeout: 10s
       retries: 5
@@ -132,7 +132,7 @@ services:
       - SPARK_WORKER_CORES=${SPARK_WORKER_CORES}
       - SPARK_WORKER_MEMORY=${SPARK_WORKER_MEMORY}
       - SPARK_WORKER_WEBUI=8083
-    command: ["/bin/bash", "-c", "/opt/spark/sbin/start-worker.sh --webui-port $$SPARK_WORKER_WEBUI spark://${SPARK_MASTER_HOST}:${SPARK_MASTER_PORT}"]
+    command: [ "/bin/bash", "-c", "/opt/spark/sbin/start-worker.sh --webui-port $$SPARK_WORKER_WEBUI spark://${SPARK_MASTER_HOST}:${SPARK_MASTER_PORT}" ]
     ports:
       - "8083:8083"
     volumes:
@@ -143,7 +143,7 @@ services:
     networks:
       - gh-net
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8083"]
+      test: [ "CMD", "curl", "-f", "http://localhost:8083" ]
       interval: 30s
       timeout: 10s
       retries: 5
@@ -168,7 +168,7 @@ services:
       - AWS_SECRET_ACCESS_KEY=${MINIO_ROOT_PASSWORD}
       - AWS_REGION=${MINIO_REGION}
       - SPARK_HISTORY_OPTS=-Dspark.history.fs.logDirectory=file:///opt/spark/event-logs -Dspark.history.ui.port=${SPARK_HISTORY_PORT}
-    command: ["/bin/bash", "-c", "/opt/spark/sbin/start-history-server.sh"]
+    command: [ "/bin/bash", "-c", "/opt/spark/sbin/start-history-server.sh" ]
     ports:
       - "${SPARK_HISTORY_PORT}:${SPARK_HISTORY_PORT}"
     volumes:
@@ -178,7 +178,7 @@ services:
     networks:
       - gh-net
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:${SPARK_HISTORY_PORT}"]
+      test: [ "CMD", "curl", "-f", "http://localhost:${SPARK_HISTORY_PORT}" ]
       interval: 30s
       timeout: 10s
       retries: 5
@@ -199,7 +199,122 @@ services:
     networks:
       - gh-net
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:${MINIO_PORT}/minio/health/live"]
+      test: [ "CMD", "curl", "-f", "http://localhost:${MINIO_PORT}/minio/health/live" ]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  # ============ apache airflow ============
+  airflow-postgres:
+    image: postgres:15
+    container_name: airflow-postgres
+    hostname: airflow-postgres
+    environment:
+      POSTGRES_USER: airflow
+      POSTGRES_PASSWORD: airflow
+      POSTGRES_DB: airflow
+    volumes:
+      - airflow-postgres-data:/var/lib/postgresql/data
+    networks:
+      - gh-net
+    healthcheck:
+      test: [ "CMD", "pg_isready", "-U", "airflow" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  airflow-init:
+    build:
+      context: ./docker/airflow
+    container_name: airflow-init
+    depends_on:
+      airflow-postgres:
+        condition: service_healthy
+    environment:
+      - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://airflow:airflow@airflow-postgres:5432/airflow
+      - AIRFLOW__CORE__EXECUTOR=LocalExecutor
+      - AIRFLOW__CORE__LOAD_EXAMPLES=false
+    entrypoint: /bin/bash
+    command:
+      - -c
+      - |
+        airflow db migrate
+        airflow users create \
+          --username airflow \
+          --password airflow \
+          --firstname Admin \
+          --lastname User \
+          --role Admin \
+          --email admin@example.com || true
+        echo "Airflow 초기화 완료"
+    networks:
+      - gh-net
+
+  airflow-webserver:
+    build:
+      context: ./docker/airflow
+    container_name: airflow-webserver
+    hostname: airflow-webserver
+    depends_on:
+      airflow-init:
+        condition: service_completed_successfully
+      spark-master:
+        condition: service_healthy
+    environment:
+      - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://airflow:airflow@airflow-postgres:5432/airflow
+      - AIRFLOW__CORE__EXECUTOR=LocalExecutor
+      - AIRFLOW__CORE__LOAD_EXAMPLES=false
+      - AIRFLOW__WEBSERVER__EXPOSE_CONFIG=true
+      - PYTHONPATH=/opt/gharchive
+      - S3_ENDPOINT=http://minio:9000
+      - MINIO_REGION=${MINIO_REGION}
+      - AWS_ACCESS_KEY_ID=${MINIO_ROOT_USER}
+      - AWS_SECRET_ACCESS_KEY=${MINIO_ROOT_PASSWORD}
+    command: webserver
+    ports:
+      - "8088:8080"
+    volumes:
+      - ./airflow/dags:/opt/airflow/dags
+      - ./airflow/logs:/opt/airflow/logs
+      - ./airflow/plugins:/opt/airflow/plugins
+      - ./jobs:/opt/gharchive/jobs
+      - ./docker/spark/conf:/opt/spark/conf
+    networks:
+      - gh-net
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:8080/health" ]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  airflow-scheduler:
+    build:
+      context: ./docker/airflow
+    container_name: airflow-scheduler
+    hostname: airflow-scheduler
+    depends_on:
+      airflow-init:
+        condition: service_completed_successfully
+    environment:
+      - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://airflow:airflow@airflow-postgres:5432/airflow
+      - AIRFLOW__CORE__EXECUTOR=LocalExecutor
+      - AIRFLOW__CORE__LOAD_EXAMPLES=false
+      - PYTHONPATH=/opt/gharchive
+      - S3_ENDPOINT=http://minio:9000
+      - MINIO_REGION=${MINIO_REGION}
+      - AWS_ACCESS_KEY_ID=${MINIO_ROOT_USER}
+      - AWS_SECRET_ACCESS_KEY=${MINIO_ROOT_PASSWORD}
+    command: scheduler
+    volumes:
+      - ./airflow/dags:/opt/airflow/dags
+      - ./airflow/logs:/opt/airflow/logs
+      - ./airflow/plugins:/opt/airflow/plugins
+      - ./jobs:/opt/gharchive/jobs
+      - ./docker/spark/conf:/opt/spark/conf
+    networks:
+      - gh-net
+    healthcheck:
+      test: [ "CMD", "airflow", "jobs", "check", "--local" ]
       interval: 30s
       timeout: 10s
       retries: 5
@@ -212,3 +327,4 @@ volumes:
   minio-data:
   spark-event-logs:
   spark-warehouse:
+  airflow-postgres-data:
