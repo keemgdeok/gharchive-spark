@@ -12,11 +12,15 @@ ARG AWS_SDK_VERSION=1.12.262
 ENV SPARK_HOME=/opt/spark
 ENV PATH=${SPARK_HOME}/bin:${PATH}
 
-# Java 설치
+# Java 및 Docker CLI 설치
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
-    openjdk-17-jre-headless curl procps ca-certificates \
+    openjdk-17-jre-headless curl procps ca-certificates docker.io \
     && rm -rf /var/lib/apt/lists/*
+
+# Docker 그룹에 airflow 사용자 추가 (호스트 docker 소켓 접근용)
+RUN groupadd -g 984 docker || true \
+    && usermod -aG docker airflow || true
 
 ENV JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
 
@@ -30,6 +34,10 @@ RUN curl -fsSL https://repo1.maven.org/maven2/org/apache/hadoop/hadoop-aws/${HAD
     -o ${SPARK_HOME}/jars/hadoop-aws-${HADOOP_AWS_VERSION}.jar \
     && curl -fsSL https://repo1.maven.org/maven2/com/amazonaws/aws-java-sdk-bundle/${AWS_SDK_VERSION}/aws-java-sdk-bundle-${AWS_SDK_VERSION}.jar \
     -o ${SPARK_HOME}/jars/aws-java-sdk-bundle-${AWS_SDK_VERSION}.jar
+
+# Spark 작업 디렉토리 생성 (쓰기 권한 필요)
+RUN mkdir -p ${SPARK_HOME}/work-dir ${SPARK_HOME}/event-logs \
+    && chmod -R 777 ${SPARK_HOME}/work-dir ${SPARK_HOME}/event-logs
 
 USER airflow
 

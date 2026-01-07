@@ -1,7 +1,8 @@
 services:
   spark-master:
     build:
-      context: ./docker/spark
+      context: .
+      dockerfile: docker/spark/Dockerfile
       args:
         SPARK_VERSION: ${SPARK_VERSION}
         HADOOP_VERSION: ${HADOOP_VERSION}
@@ -36,7 +37,8 @@ services:
 
   spark-worker-1:
     build:
-      context: ./docker/spark
+      context: .
+      dockerfile: docker/spark/Dockerfile
       args:
         SPARK_VERSION: ${SPARK_VERSION}
         HADOOP_VERSION: ${HADOOP_VERSION}
@@ -74,7 +76,8 @@ services:
 
   spark-worker-2:
     build:
-      context: ./docker/spark
+      context: .
+      dockerfile: docker/spark/Dockerfile
       args:
         SPARK_VERSION: ${SPARK_VERSION}
         HADOOP_VERSION: ${HADOOP_VERSION}
@@ -112,7 +115,8 @@ services:
 
   spark-worker-3:
     build:
-      context: ./docker/spark
+      context: .
+      dockerfile: docker/spark/Dockerfile
       args:
         SPARK_VERSION: ${SPARK_VERSION}
         HADOOP_VERSION: ${HADOOP_VERSION}
@@ -150,7 +154,8 @@ services:
 
   spark-history-server:
     build:
-      context: ./docker/spark
+      context: .
+      dockerfile: docker/spark/Dockerfile
       args:
         SPARK_VERSION: ${SPARK_VERSION}
         HADOOP_VERSION: ${HADOOP_VERSION}
@@ -270,6 +275,8 @@ services:
       - MINIO_REGION=${MINIO_REGION}
       - AWS_ACCESS_KEY_ID=${MINIO_ROOT_USER}
       - AWS_SECRET_ACCESS_KEY=${MINIO_ROOT_PASSWORD}
+      - SPARK_IMAGE=${SPARK_IMAGE}
+      - COMPOSE_PROJECT_NAME=${COMPOSE_PROJECT_NAME}
     command: webserver
     ports:
       - "8088:8080"
@@ -292,6 +299,9 @@ services:
       context: ./docker/airflow
     container_name: airflow-scheduler
     hostname: airflow-scheduler
+    # Docker 그룹 권한 추가 (DockerOperator 사용을 위해)
+    group_add:
+      - "${DOCKER_GID}"
     depends_on:
       airflow-init:
         condition: service_completed_successfully
@@ -304,13 +314,21 @@ services:
       - MINIO_REGION=${MINIO_REGION}
       - AWS_ACCESS_KEY_ID=${MINIO_ROOT_USER}
       - AWS_SECRET_ACCESS_KEY=${MINIO_ROOT_PASSWORD}
+      - SPARK_IMAGE=${SPARK_IMAGE}
+      - COMPOSE_PROJECT_NAME=${COMPOSE_PROJECT_NAME}
     command: scheduler
+    ports:
+      # Spark Driver 통신 포트
+      - "5041:5041"
+      - "5042:5042"
     volumes:
       - ./airflow/dags:/opt/airflow/dags
       - ./airflow/logs:/opt/airflow/logs
       - ./airflow/plugins:/opt/airflow/plugins
       - ./jobs:/opt/gharchive/jobs
       - ./docker/spark/conf:/opt/spark/conf
+      # DockerOperator 사용을 위한 Docker 소켓 마운트
+      - /var/run/docker.sock:/var/run/docker.sock
     networks:
       - gh-net
     healthcheck:
