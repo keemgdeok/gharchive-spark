@@ -260,10 +260,10 @@ ______________________________________________________________________
 
   | Key | Value |
   | :-- | :-- |
-  | Problem | 2025-10-09 (UTC) 이후 PushEvent payload 필드(size/distinct_size/commits) 누락(v2) 발생 |
-  | Solution | payload_raw 보존 + Superset 스키마(`jobs/silver/schemas/*.json`)로 `from_json` 파싱 |
-  | Validation | `payload_parse_ok`/`payload_variant`(키셋 해시) 분포로 파싱 실패/버전 확인 |
-  | Evidence | 샘플 비교 결과/TBD, 파싱 로그 스냅샷 경로/TBD |
+  | Problem | 2025-10-09 이후 PushEvent payload 필드(size/distinct_size/commits) 누락 발생 |
+  | Cause | GHArchive 업스트림에서 PushEvent 스키마 변경 (v1→v2) |
+  | Solution | `payload_raw` 보존 + Superset 스키마(`jobs/silver/schemas/*.json`)로 `from_json` 파싱 |
+  | Validation | `payload_parse_ok`/`payload_variant` 분포로 파싱 성공률 확인 |
 </details>
 
 <details>
@@ -271,10 +271,10 @@ ______________________________________________________________________
 
   | Key | Value |
   | :-- | :-- |
-  | Problem | payload 중첩 구조(배열/오브젝트)로 직접 분석이 어려움 |
-  | Solution | `with_payload`로 구조체 파싱 후 `col("payload.*")`로 전개, commits는 `explode_outer` 적용 |
-  | Validation | `commit_sha` null 필터 결과/`--verbose` `explain(True)`로 변환 확인 |
-  | Evidence | explain 로그 경로/TBD, 결과 스냅샷 경로/TBD |
+  | Problem | payload 중첩 구조(배열/오브젝트)로 직접 분석 어려움 |
+  | Cause | GHArchive JSON 구조가 이벤트 타입별로 다른 중첩 깊이 보유 |
+  | Solution | `with_payload`로 구조체 파싱 → `col("payload.*")` 전개, commits는 `explode_outer` 적용 |
+  | Validation | `commit_sha` null 필터, `--verbose` `explain(True)`로 변환 확인 |
 </details>
 
 <details>
@@ -282,10 +282,10 @@ ______________________________________________________________________
 
   | Key | Value |
   | :-- | :-- |
-  | Problem | `partitionBy("dt")` 저장 시 기본 파티션 수가 많으면 작은 파일이 다량 생성됨 |
-  | Solution | Silver `--repartition/--coalesce`, Gold `--coalesce`로 파일 수 조정 + AQE coalescePartitions 활성화 |
-  | Validation | `write partitions`/`silver(...) 파일 개수` 로그로 전후 비교 |
-  | Evidence | Spark UI 캡처 경로/TBD, 로그 스냅샷 경로/TBD |
+  | Problem | `partitionBy("dt")` 저장 시 작은 파일이 다량 생성됨 |
+  | Cause | 기본 `spark.sql.shuffle.partitions`(200)이 데이터 크기 대비 과다 |
+  | Solution | AQE `coalescePartitions` 활성화 + Silver/Gold에서 `--coalesce` 옵션 사용 |
+  | Validation | `write partitions` 로그로 파일 수 전후 비교 |
 </details>
 
 <details>
@@ -293,12 +293,10 @@ ______________________________________________________________________
 
   | Key | Value |
   | :-- | :-- |
-  | Problem | `@task.pyspark`로 마이그레이션 시 Executor에서 `OutOfMemoryError` 발생 |
-  | Cause | 원격 Driver 아키텍처: Airflow 컨테이너(Driver) ↔ Spark Worker(Executor) 간 직렬화 오버헤드 |
-  | Symptoms | Kryo: `EOFException`, Java: `OutOfMemoryError: Java heap space` (Stage 4 Write 단계) |
-  | Solution | 1) Java 직렬화 사용 (Kryo는 원격 Driver에서 불안정)<br>2) `spark.executor.memory` 2G → 4G 증가<br>3) `SPARK_WORKER_MEMORY` 3G 이상 |
-  | Validation | Silver/Gold 전체 파이프라인 테스트 후 OOM 없음 확인 |
-  | Config | `spark-defaults.conf`: `spark.executor.memory=2g`, `.env`: `SPARK_WORKER_MEMORY=3G` |
+  | Problem | `@task.pyspark` 마이그레이션 시 Executor `OutOfMemoryError` 발생 |
+  | Cause | 원격 Driver 아키텍처(Airflow↔Worker)에서 Java 직렬화 오버헤드 발생 |
+  | Solution | 1) Java 직렬화 사용<br>2) `spark.executor.memory` 1G→2G<br>3) `SPARK_WORKER_MEMORY` 3G 이상<br>4) `spark.sql.shuffle.partitions` 18→64 |
+  | Validation | Silver/Gold 전체 파이프라인 테스트 성공 |
 </details>
 
 <br>
