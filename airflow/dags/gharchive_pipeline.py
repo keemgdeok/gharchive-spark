@@ -2,19 +2,20 @@
 GHArchive Daily Pipeline DAG
 Bronze → Silver → Gold 메달리온 아키텍처 파이프라인
 
-- Bronze: GHArchive .json.gz 수집 (Airflow 컨테이너에서 실행)
-- Silver: DockerOperator 기반 Spark Job (spark-master에서 실행)
-- Gold: DockerOperator 기반 Spark Job (spark-master에서 실행)
+- Bronze: GHArchive .json.gz 수집 (@task로 실행)
+- Silver: @task.pyspark 기반 Spark Job
+- Gold: @task.pyspark 기반 Spark Job
 """
 
 from __future__ import annotations
 
 import os
-from datetime import datetime, timedelta
 import subprocess
+from datetime import datetime, timedelta
 
 from airflow.decorators import dag, task
-from airflow.providers.docker.operators.docker import DockerOperator
+from airflow.providers.apache.spark.decorators.pyspark import pyspark_task
+from airflow.utils.trigger_rule import TriggerRule
 
 # DAG 기본 설정
 default_args = {
@@ -26,40 +27,37 @@ default_args = {
     "max_retry_delay": timedelta(minutes=30),
 }
 
-# Spark DockerOperator 설정 (환경변수에서 주입)
-SPARK_IMAGE = os.getenv("SPARK_IMAGE", "gharchive-spark-spark-master:latest")
-SPARK_NETWORK = f"{os.getenv('COMPOSE_PROJECT_NAME', 'gharchive-spark')}_gh-net"
-
-# S3A 인증용 환경변수 (spark-defaults.conf의 EnvironmentVariableCredentialsProvider가 사용)
-SPARK_ENV = {
-    "AWS_ACCESS_KEY_ID": os.getenv("AWS_ACCESS_KEY_ID", "minioadmin"),
-    "AWS_SECRET_ACCESS_KEY": os.getenv("AWS_SECRET_ACCESS_KEY", "minioadmin"),
+# Spark 런타임 설정 (spark-defaults.conf에서 나머지 설정 자동 로드)
+# 참고: /opt/spark/conf/spark-defaults.conf는 docker-compose.yaml에서 마운트됨
+SPARK_CONF = {
+    # spark-defaults.conf의 spark.master를 override (동일하지만 명시적으로)
+    "spark.master": "spark://spark-master:7077",
+    # 런타임에 동적으로 결정되는 Driver 통신 설정
+    "spark.driver.host": os.getenv("HOSTNAME", "airflow-scheduler"),
+    "spark.driver.bindAddress": "0.0.0.0",
 }
-
-
-def spark_submit_command(script_path: str, date_arg: str) -> str:
-    """spark-submit 명령어 (설정은 spark-defaults.conf에서 로드, driver 통신만 런타임 지정)"""
-    return f"/bin/bash -c '/opt/spark/bin/spark-submit --conf spark.driver.host=$(hostname -i) --conf spark.driver.bindAddress=0.0.0.0 {script_path} --date {date_arg}'"
 
 
 @dag(
     dag_id="gharchive_daily",
     default_args=default_args,
     description="GHArchive 일별 Medallion 파이프라인 (Bronze → Silver → Gold)",
-    schedule="0 2 * * *",  # 매일 02:00 UTC
+    schedule="0 2 * * *",
     start_date=datetime(2024, 1, 1),
     catchup=False,
-    tags=["gharchive", "medallion", "spark"],
+    tags=["gharchive", "medallion", "spark", "taskflow"],
 )
 def gharchive_daily():
+    """GHArchive Daily Pipeline using @task.pyspark TaskFlow API"""
+
     @task
     def build_hours_for_date(target_date: str) -> list[str]:
-        # 전날(target_date) 기준 24시간 리스트 생성
+        """대상 날짜의 24시간 리스트 생성"""
         return [f"{target_date}-{hour:02d}" for hour in range(24)]
 
     @task(pool="bronze_pool")
     def bronze_ingest(hour: str) -> None:
-        # Airflow 컨테이너에서 시간별 브론즈 수집
+        """시간별 Bronze 데이터 수집"""
         subprocess.run(
             [
                 "python3",
@@ -73,149 +71,87 @@ def gharchive_daily():
             check=True,
         )
 
-    # Bronze JSON → Silver Parquet 변환
-    silver_base = DockerOperator(
-        task_id="silver_base",
-        image=SPARK_IMAGE,
-        api_version="auto",
-        auto_remove="success",
-        docker_url="unix://var/run/docker.sock",
-        network_mode=SPARK_NETWORK,
-        hostname="silver_base",
-        environment=SPARK_ENV,
-        command=spark_submit_command(
-            "/opt/gharchive/jobs/silver/base.py",
-            "{{ ds }}",
-        ),
-        mount_tmp_dir=False,
-    )
+    @pyspark_task(config_kwargs=SPARK_CONF)
+    def silver_base(target_date: str, spark=None) -> None:
+        """Bronze → Silver 변환 (events_base + 멀티 트랙)"""
+        from jobs.silver.base import process
 
-    # Silver 완료 후 스키마 드리프트 감지 (DockerOperator)
-    check_schema_drift = DockerOperator(
-        task_id="check_schema_drift",
-        image=SPARK_IMAGE,
-        api_version="auto",
-        auto_remove="success",
-        docker_url="unix://var/run/docker.sock",
-        network_mode=SPARK_NETWORK,
-        hostname="check_schema_drift",
-        environment=SPARK_ENV,
-        command=spark_submit_command(
-            "/opt/gharchive/jobs/silver/schema_drift/cli.py",
-            "{{ ds }}",
-        ),
-        mount_tmp_dir=False,
-    )
+        process(spark=spark, target_date=target_date)
+
+    @pyspark_task(config_kwargs=SPARK_CONF)
+    def check_schema_drift(target_date: str, spark=None) -> dict:
+        """Silver 스키마 드리프트 감지"""
+        from jobs.silver.schema_drift.cli import process
+
+        return process(spark=spark, target_date=target_date)
 
     @task.branch
-    def evaluate_drift(**context) -> str:
+    def evaluate_drift(drift_result: dict) -> str:
         """
         드리프트 여부에 따라 분기
-        S3에 저장된 드리프트 결과 JSON을 읽어서 분기 결정
-        - 드리프트 감지: log_drift_alert 실행 후 gold_base로
-        - 드리프트 없음: gold_base로 직접 진행
+        - 드리프트 감지: log_drift_alert 실행
+        - 드리프트 없음: run_gold_base로 직접 진행
         """
-        import boto3
-        import json
+        if drift_result.get("drift_detected", False):
+            return "log_drift_alert"
+        return "run_gold_base"
 
-        # S3에서 결과 읽기
-        s3_endpoint = os.getenv("S3_ENDPOINT", "http://minio:9000")
-        s3 = boto3.client(
-            "s3",
-            endpoint_url=s3_endpoint,
-            aws_access_key_id=os.getenv("AWS_ACCESS_KEY_ID"),
-            aws_secret_access_key=os.getenv("AWS_SECRET_ACCESS_KEY"),
-            region_name=os.getenv("MINIO_REGION", "us-east-1"),
-        )
-
-        target_date = context["ds"]
-        key = f"metadata/schema_drift_results/{target_date}.json"
-
-        try:
-            response = s3.get_object(Bucket="gharchive", Key=key)
-            content = response["Body"].read().decode("utf-8")
-            drift_results = json.loads(content)
-
-            if drift_results.get("drift_detected", False):
-                return "log_drift_alert"
-        except Exception:  # noqa: BLE001
-            # 결과 파일이 없거나 읽기 실패 시 Gold로 진행
-            pass
-
-        return "gold_base"
-
-    @task
+    @task(task_id="log_drift_alert")
     def log_drift_alert(**context) -> None:
-        """드리프트 알림 로깅 및 Airflow Variable 기록"""
-        import boto3
-        import json
+        """드리프트 알림 로깅 (XCom에서 데이터 읽기)"""
         from jobs.silver.schema_drift.alerter import send_drift_alert
         from jobs.silver.schema_drift.detector import (
             AggregatedDriftResult,
             SchemaDriftResult,
         )
 
-        # S3에서 결과 읽기
-        s3_endpoint = os.getenv("S3_ENDPOINT", "http://minio:9000")
-        s3 = boto3.client(
-            "s3",
-            endpoint_url=s3_endpoint,
-            aws_access_key_id=os.getenv("AWS_ACCESS_KEY_ID"),
-            aws_secret_access_key=os.getenv("AWS_SECRET_ACCESS_KEY"),
-            region_name=os.getenv("MINIO_REGION", "us-east-1"),
-        )
+        # XCom에서 check_schema_drift 결과 읽기
+        ti = context["ti"]
+        drift_result = ti.xcom_pull(task_ids="check_schema_drift")
 
-        target_date = context["ds"]
-        key = f"metadata/schema_drift_results/{target_date}.json"
-
-        try:
-            response = s3.get_object(Bucket="gharchive", Key=key)
-            content = response["Body"].read().decode("utf-8")
-            drift_results = json.loads(content)
-        except Exception:  # noqa: BLE001
-            return
-
-        # dict를 다시 객체로 변환
         track_results = [
-            SchemaDriftResult(**tr) for tr in drift_results.get("track_results", [])
+            SchemaDriftResult(**tr) for tr in drift_result.get("track_results", [])
         ]
         result = AggregatedDriftResult(
-            target_date=drift_results["target_date"],
+            target_date=drift_result["target_date"],
             track_results=track_results,
-            drift_detected=drift_results["drift_detected"],
-            total_new_variants=drift_results["total_new_variants"],
-            max_failure_rate=drift_results["max_failure_rate"],
+            drift_detected=drift_result["drift_detected"],
+            total_new_variants=drift_result["total_new_variants"],
+            max_failure_rate=drift_result["max_failure_rate"],
         )
         send_drift_alert(result)
 
-    # Silver → Gold 집계 마트 생성
-    gold_base = DockerOperator(
-        task_id="gold_base",
-        image=SPARK_IMAGE,
-        api_version="auto",
-        auto_remove="success",
-        docker_url="unix://var/run/docker.sock",
-        network_mode=SPARK_NETWORK,
-        hostname="gold_base",
-        environment=SPARK_ENV,
-        command=spark_submit_command(
-            "/opt/gharchive/jobs/gold/base.py",
-            "{{ ds }}",
-        ),
-        mount_tmp_dir=False,
-        trigger_rule="none_failed_min_one_success",
+    @pyspark_task(
+        task_id="run_gold_base",
+        config_kwargs=SPARK_CONF,
+        trigger_rule=TriggerRule.NONE_FAILED_MIN_ONE_SUCCESS,
     )
+    def gold_base(target_date: str, spark=None) -> None:
+        """Silver → Gold 집계 마트 생성"""
+        from jobs.gold.base import process
+
+        process(spark=spark, target_date=target_date)
 
     # DAG 흐름 정의
-    hours = build_hours_for_date(target_date="{{ ds }}")
+    ds = "{{ ds }}"
+    hours = build_hours_for_date(target_date=ds)
     bronze_tasks = bronze_ingest.expand(hour=hours)
 
-    branch_decision = evaluate_drift()
-    alert_task = log_drift_alert()
+    silver_result = silver_base(target_date=ds)
+    drift_result = check_schema_drift(target_date=ds)
+    branch = evaluate_drift(drift_result)
 
-    bronze_tasks >> silver_base >> check_schema_drift >> branch_decision
-    branch_decision >> alert_task >> gold_base
-    branch_decision >> gold_base
+    # log_drift_alert는 파라미터 없이 호출 (XCom으로 읽음)
+    alert = log_drift_alert()
+    gold = gold_base(target_date=ds)
+
+    # 의존성 설정
+    # Branch 패턴:
+    # - 드리프트 감지: branch → alert → gold
+    # - 드리프트 없음: branch → gold (alert skip)
+    bronze_tasks >> silver_result >> drift_result >> branch
+    branch >> [alert, gold]
+    alert >> gold
 
 
 dag = gharchive_daily()
