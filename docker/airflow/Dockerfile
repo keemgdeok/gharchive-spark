@@ -36,15 +36,17 @@ RUN curl -fsSL https://repo1.maven.org/maven2/org/apache/hadoop/hadoop-aws/${HAD
     -o ${SPARK_HOME}/jars/aws-java-sdk-bundle-${AWS_SDK_VERSION}.jar
 
 # Spark 작업 디렉토리 생성 (쓰기 권한 필요)
-RUN mkdir -p ${SPARK_HOME}/work-dir ${SPARK_HOME}/event-logs \
+# 참고: spark-defaults.conf는 docker-compose.yaml에서 볼륨 마운트됨
+RUN mkdir -p ${SPARK_HOME}/work-dir ${SPARK_HOME}/event-logs ${SPARK_HOME}/conf \
     && chmod -R 777 ${SPARK_HOME}/work-dir ${SPARK_HOME}/event-logs
 
 USER airflow
 
-# Airflow Provider 설치
+# Airflow Provider 및 PySpark 설치
 RUN pip install --no-cache-dir \
     apache-airflow-providers-apache-spark==4.11.1 \
     apache-airflow-providers-amazon==9.1.0 \
+    pyspark==3.5.7 \
     aiohttp \
     boto3 \
     requests
