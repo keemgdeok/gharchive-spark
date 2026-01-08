@@ -44,17 +44,12 @@ ______________________________________________________________________
 
 
 **Flow** <br>
-Bronze(Raw JSON) → Silver(스키마 중첩 해제/Curated Parquet) → Gold(집계 데이터 마트)
+Bronze(Raw JSON) → Silver(Curated Parquet) → Gold(Aggregated Marts)
 
-**Storage** <br>
-MinIO `bronze/`, `silver/`, `gold/` 사용
-
-**Observability** <br>
-Spark UI(Driver) + Spark History Server
 
 ### Technical concerns
 
-\#
+설계 결정 및 트러블슈팅 상세 내용 **[Technical Concern](https://versed-racer-357.notion.site/Technical-Concern-2c6cd94d4b5e80f6bd39f19fc5e1be53?source=copy_link)** 참고
 
 <br>
 
