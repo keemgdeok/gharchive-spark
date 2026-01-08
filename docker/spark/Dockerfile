@@ -6,6 +6,7 @@ ARG HADOOP_AWS_VERSION=3.3.4
 ARG AWS_SDK_VERSION=1.12.262
 
 ENV SPARK_HOME=/opt/spark
+ENV PYTHONPATH=/opt/gharchive
 ENV PATH=${SPARK_HOME}/bin:${SPARK_HOME}/sbin:${PATH}
 
 # 기본 도구와 Python 패키지 설치
@@ -28,8 +29,11 @@ RUN pip3 install --no-cache-dir pyspark==${SPARK_VERSION} pandas boto3 requests 
 # 로그 및 이벤트 디렉토리 생성
 RUN mkdir -p ${SPARK_HOME}/conf ${SPARK_HOME}/logs ${SPARK_HOME}/event-logs ${SPARK_HOME}/work-dir
 
-# 설정 복사
-COPY conf/ ${SPARK_HOME}/conf/
+# 설정 복사 (빌드 컨텍스트: 프로젝트 루트)
+COPY docker/spark/conf/ ${SPARK_HOME}/conf/
+
+# Jobs 코드 복사
+COPY jobs/ /opt/gharchive/jobs/
 
 WORKDIR ${SPARK_HOME}
 

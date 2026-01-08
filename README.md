@@ -10,6 +10,7 @@
 <img src="https://img.shields.io/badge/PySpark-3.5.7-E25A1C?style=flat&logo=apachespark&logoColor=white" alt="PySpark">
 <img src="https://img.shields.io/badge/Hadoop-3.3.4-66CCFF?style=flat&logo=apachehadoop&logoColor=black" alt="Hadoop">
 <img src="https://img.shields.io/badge/MinIO-S3%20Compatible-000000?style=flat&logo=minio&logoColor=white" alt="MinIO">
+<img src="https://img.shields.io/badge/Apache%20Airflow-2.10-017CEE?style=flat&logo=apacheairflow&logoColor=white" alt="Apache Airflow">
 <br>
 <img src="https://img.shields.io/badge/Docker-2496ED?style=flat&logo=docker&logoColor=white" alt="Docker">
 <img src="https://img.shields.io/badge/Python-3.10%2B-3776AB?style=flat&logo=python&logoColor=white" alt="Python">
@@ -69,6 +70,7 @@ ______________________________________________________________________
 | Performance | <ul><li>AQE 활성화</li><li>`spark.sql.shuffle.partitions` 튜닝</li><li>Small File: coalesce/repartition</li><li>Data Skew: salting/broadcast join</li></ul> |
 | Gold | <ul><li>top_repos/event_type/top_repo_event_types 집계</li><li>daily_top_repos(window), push_branch_ratio(master/main 비율) 추가</li><li>parquet/csv 출력</li><li>coalesce로 단일 파일 생성</li></ul> |
 | Observability | <ul><li>Spark UI(4040-4050)</li><li>Spark History Server(18080)</li><li>Event Log 보존 정책</li></ul> |
+| Orchestration | <ul><li>Airflow 2.10 (8088)</li><li>`@task.pyspark` TaskFlow API</li><li>Bronze→Silver→Gold DAG</li><li>Schema Drift 감지 및 분기</li><li>Backfill/Retry/Alerting</li></ul> |
 | Quality | <ul><li>ruff + mypy + pre-commit</li><li>Docker 기반 재현</li></ul> |
 
 <br>
@@ -79,13 +81,15 @@ ______________________________________________________________________
 
 | Path | Purpose |
 | :-- | :-- |
-| `docker-compose.yaml` | Spark/MinIO/History Server 인프라 정의 |
+| `docker-compose.yaml` | Spark/MinIO/History Server/Airflow 인프라 정의 |
 | `docker/spark/` | Spark 이미지 빌드 및 S3A JAR 포함 |
 | `docker/spark/conf/` | `spark-defaults.conf`, `spark-env.sh`, `log4j.properties` |
+| `docker/airflow/` | Airflow 이미지 (Spark Provider + PySpark, `@task.pyspark` 사용) |
+| `airflow/dags/` | Airflow DAG 파일 (`gharchive_pipeline.py`) |
 | `jobs/bronze/` | <ul><li>GHArchive .json.gz 수집</li><li>비동기 다운로드/재시도/멱등 업로드</li><li>bronze 경로 적재</li></ul> |
 | `jobs/silver/` | <ul><li>이벤트 정규화</li><li>중첩 해제/트랙 변환</li><li>스키마 드리프트 대응</li></ul> |
 | `jobs/gold/` | <ul><li>Gold 집계 마트 생성</li><li>Skew/Broadcast 시나리오 포함</li><li>parquet/csv 출력</li></ul> |
-| `jobs/spark_runtime.py` | <ul><li>S3A 설정/크리덴셜/JAR 검증</li><li>Spark 런타임 초기화 유틸</li></ul> |
+| `jobs/spark_runtime.py` | <ul><li>S3A 설정/크리덴셜/JAR 검증</li><li>외부 SparkSession 주입 지원 (`@task.pyspark`)</li></ul> |
 | `data/samples/schema-drift/` | 스키마 드리프트 샘플 |
 
 <br>
@@ -113,10 +117,10 @@ ______________________________________________________________________
    SPARK_MASTER_PORT=7077
    SPARK_MASTER_WEBUI=8080
    SPARK_WORKER_CORES=2
-   SPARK_WORKER_MEMORY=2G
+   SPARK_WORKER_MEMORY=3G
    SPARK_HISTORY_PORT=18080
    SPARK_DRIVER_MEMORY=2G
-   SPARK_EXECUTOR_MEMORY=1G
+   SPARK_EXECUTOR_MEMORY=2G
    SPARK_EXECUTOR_CORES=2
    SPARK_LOCAL_DIR=/opt/spark/work-dir
 
@@ -161,11 +165,23 @@ ______________________________________________________________________
      /opt/spark/bin/spark-submit \
      --master spark://spark-master:7077 \
      /opt/gharchive/jobs/gold/base.py \
-     --hour 2024-05-21-00
+     --date 2024-05-21
    ```
 
-6. **UI 접근**
+6. **Airflow DAG 실행 (권장)**
+   ```bash
+   # DAG 트리거
+   docker compose exec airflow-scheduler \
+     airflow dags trigger gharchive_daily --exec-date "2024-05-21"
+
+   # 태스크 상태 확인
+   docker compose exec airflow-scheduler \
+     airflow tasks states-for-dag-run gharchive_daily "manual__2024-05-21T00:00:00+00:00"
+   ```
+
+7. **UI 접근**
     ```text
+    Airflow UI: http://localhost:8088 (ID/PW: airflow/airflow)
     Spark Master: http://localhost:8080
     Spark Worker: http://localhost:8081, http://localhost:8082, http://localhost:8083
     Spark UI(실행 중 Driver): http://localhost:4040 (점유 시 4041, 4042 ...)
@@ -203,15 +219,15 @@ spark.range(5).write.mode("overwrite").parquet("s3a://gharchive/_smoketest/spark
 spark.read.parquet("s3a://gharchive/_smoketest/spark-3.5.7/").count()
 ```
 
-#### Bronze ingestion
+#### Bronze ingestion (Airflow 컨테이너 기준)
 
 ```bash
 # --date 24시간 전체 처리
-docker compose exec -T spark-master \
+docker compose exec -T airflow-webserver \
   python3 -m jobs.bronze.ingest --date 2024-05-21 --concurrency 8
 
 # --hour 단일 시간 처리
-docker compose exec -T spark-master \
+docker compose exec -T airflow-webserver \
   python3 -m jobs.bronze.ingest --hour 2024-05-21-00 --concurrency 1
 ```
 
@@ -244,10 +260,10 @@ ______________________________________________________________________
 
   | Key | Value |
   | :-- | :-- |
-  | Problem | 2025-10-09 (UTC) 이후 PushEvent payload 필드(size/distinct_size/commits) 누락(v2) 발생 |
-  | Solution | payload_raw 보존 + Superset 스키마(`jobs/silver/schemas/*.json`)로 `from_json` 파싱 |
-  | Validation | `payload_parse_ok`/`payload_variant`(키셋 해시) 분포로 파싱 실패/버전 확인 |
-  | Evidence | 샘플 비교 결과/TBD, 파싱 로그 스냅샷 경로/TBD |
+  | Problem | 2025-10-09 이후 PushEvent payload 필드(size/distinct_size/commits) 누락 발생 |
+  | Cause | GHArchive 업스트림에서 PushEvent 스키마 변경 (v1→v2) |
+  | Solution | `payload_raw` 보존 + Superset 스키마(`jobs/silver/schemas/*.json`)로 `from_json` 파싱 |
+  | Validation | `payload_parse_ok`/`payload_variant` 분포로 파싱 성공률 확인 |
 </details>
 
 <details>
@@ -255,10 +271,10 @@ ______________________________________________________________________
 
   | Key | Value |
   | :-- | :-- |
-  | Problem | payload 중첩 구조(배열/오브젝트)로 직접 분석이 어려움 |
-  | Solution | `with_payload`로 구조체 파싱 후 `col("payload.*")`로 전개, commits는 `explode_outer` 적용 |
-  | Validation | `commit_sha` null 필터 결과/`--verbose` `explain(True)`로 변환 확인 |
-  | Evidence | explain 로그 경로/TBD, 결과 스냅샷 경로/TBD |
+  | Problem | payload 중첩 구조(배열/오브젝트)로 직접 분석 어려움 |
+  | Cause | GHArchive JSON 구조가 이벤트 타입별로 다른 중첩 깊이 보유 |
+  | Solution | `with_payload`로 구조체 파싱 → `col("payload.*")` 전개, commits는 `explode_outer` 적용 |
+  | Validation | `commit_sha` null 필터, `--verbose` `explain(True)`로 변환 확인 |
 </details>
 
 <details>
@@ -266,22 +282,21 @@ ______________________________________________________________________
 
   | Key | Value |
   | :-- | :-- |
-  | Problem | `partitionBy("dt")` 저장 시 기본 파티션 수가 많으면 작은 파일이 다량 생성됨 |
-  | Solution | Silver `--repartition/--coalesce`, Gold `--coalesce`로 파일 수 조정 + AQE coalescePartitions 활성화 |
-  | Validation | `write partitions`/`silver(...) 파일 개수` 로그로 전후 비교 |
-  | Evidence | Spark UI 캡처 경로/TBD, 로그 스냅샷 경로/TBD |
+  | Problem | `partitionBy("dt")` 저장 시 작은 파일이 다량 생성됨 |
+  | Cause | 기본 `spark.sql.shuffle.partitions`(200)이 데이터 크기 대비 과다 |
+  | Solution | AQE `coalescePartitions` 활성화 + Silver/Gold에서 `--coalesce` 옵션 사용 |
+  | Validation | `write partitions` 로그로 파일 수 전후 비교 |
 </details>
 
 <details>
-  <summary>Data Skew (데이터 쏠림)</summary>
+  <summary>Remote Driver OOM (@task.pyspark)</summary>
 
   | Key | Value |
   | :-- | :-- |
-  | Problem | 상위 레포에 이벤트가 집중되어 집계 Task 편차 발생 |
-  | Repro | `--skew-multiplier`로 상위 레포 이벤트 복제 (`inflate_skew`) |
-  | Solution | `salted_repo_counts`로 repo_name + rand salt 집계 후 재집계, 필요 시 `--broadcast-dim` 적용 |
-  | Validation | `--explain`에서 Salting 집계/브로드캐스트 조인 여부 확인 |
-  | Evidence | Spark UI 캡처 경로/TBD, explain 로그 경로/TBD |
+  | Problem | `@task.pyspark` 마이그레이션 시 Executor `OutOfMemoryError` 발생 |
+  | Cause | 원격 Driver 아키텍처(Airflow↔Worker)에서 Java 직렬화 오버헤드 발생 |
+  | Solution | 1) Java 직렬화 사용<br>2) `spark.executor.memory` 1G→2G<br>3) `SPARK_WORKER_MEMORY` 3G 이상<br>4) `spark.sql.shuffle.partitions` 18→64 |
+  | Validation | Silver/Gold 전체 파이프라인 테스트 성공 |
 </details>
 
 <br>
