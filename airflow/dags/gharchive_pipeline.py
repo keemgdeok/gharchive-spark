@@ -43,7 +43,7 @@ SPARK_CONF = {
     default_args=default_args,
     description="GHArchive 일별 Medallion 파이프라인 (Bronze → Silver → Gold)",
     schedule="0 2 * * *",
-    start_date=datetime(2024, 1, 1),
+    start_date=datetime(2025, 1, 1),
     catchup=False,
     tags=["gharchive", "medallion", "spark", "taskflow"],
 )
@@ -97,17 +97,13 @@ def gharchive_daily():
         return "run_gold_base"
 
     @task(task_id="log_drift_alert")
-    def log_drift_alert(**context) -> None:
-        """드리프트 알림 로깅 (XCom에서 데이터 읽기)"""
+    def log_drift_alert(drift_result: dict) -> None:
+        """드리프트 알림 로깅"""
         from jobs.silver.schema_drift.alerter import send_drift_alert
         from jobs.silver.schema_drift.detector import (
             AggregatedDriftResult,
             SchemaDriftResult,
         )
-
-        # XCom에서 check_schema_drift 결과 읽기
-        ti = context["ti"]
-        drift_result = ti.xcom_pull(task_ids="check_schema_drift")
 
         track_results = [
             SchemaDriftResult(**tr) for tr in drift_result.get("track_results", [])
@@ -141,8 +137,8 @@ def gharchive_daily():
     drift_result = check_schema_drift(target_date=ds)
     branch = evaluate_drift(drift_result)
 
-    # log_drift_alert는 파라미터 없이 호출 (XCom으로 읽음)
-    alert = log_drift_alert()
+    # log_drift_alert에 drift_result 전달
+    alert = log_drift_alert(drift_result)
     gold = gold_base(target_date=ds)
 
     # 의존성 설정
