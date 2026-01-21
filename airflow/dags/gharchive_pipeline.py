@@ -66,7 +66,7 @@ def gharchive_daily():
                 "--hour",
                 hour,
                 "--concurrency",
-                "1",
+                "2",
             ],
             check=True,
         )
